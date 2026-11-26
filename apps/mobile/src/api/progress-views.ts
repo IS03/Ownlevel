@@ -10,8 +10,8 @@ const BASE = '/api/mobile/v1/progress/views';
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** Mis vistas with their results in the shared period (a late response for another period is invalid). */
-export const fetchProgressViews = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  client.read({ path: `${BASE}?${progressQueryString(query)}&kinds=influence${compare ? `&compareFrom=${compare.start}&compareTo=${compare.end}` : ''}`, signal, parse: (raw: unknown) => {
+export const fetchProgressViews = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null, background = false) =>
+  client.read({ path: `${BASE}?${progressQueryString(query)}&kinds=influence${compare ? `&compareFrom=${compare.start}&compareTo=${compare.end}` : ''}`, signal, ...(background ? { background } : {}), parse: (raw: unknown) => {
     const data = parseProgressViewsRead(raw);
     return data && data.period.preset === query.period && (query.period !== 'custom' || data.period.start === query.from)
       && (!compare || (data.period.previousStart === compare.start && data.period.previousEnd === compare.end)) ? data : undefined;

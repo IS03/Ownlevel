@@ -11,6 +11,7 @@ import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/trainin
 
 import { homeDay } from './home-day';
 import { useSharedHomeRead, useSharedTodayRead } from './shared-home-read';
+import { prefetchPanorama } from '@/progress/panorama-resource';
 import { prefetchNutritionWeek } from '@/nutrition/day-resource';
 
 /**
@@ -184,7 +185,7 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
     const start = () => {
       stopWarming.current?.();
       stopWarming.current = client && homeSettled && visible.current
-        ? prefetchNutritionWeek(client, warmDay, warmDay, true) : null;
+        ? prefetchNutritionWeek(client, warmDay, warmDay, true, () => prefetchPanorama(client, warmDay)) : null;
     };
     warmOnFocus.current = start; start();
     return () => { stopWarming.current?.(); stopWarming.current = null; };

@@ -14,10 +14,9 @@ export function PanoramaTools({ today, onTool }: { today: string; onTool: (tool:
   const surface = useFieldSurface('tile');
   const large = fontScale > 1.3 || width < 360;
   const groups: { title: string; detail: string; circles?: boolean; items: Tool[] }[] = [
-    { title: 'Recorrer', detail: 'Tu período, tus fechas y lo que elegiste seguir.', items: [
+    { title: 'Recorrer', detail: 'Tu período y tus fechas.', items: [
       { id: 'period', title: 'Explorar período', detail: 'Lo destacado y lo que se movió junto', icon: 'routines', press: () => router.navigate('/(tabs)/progress/period') },
       { id: 'calendar', title: 'Calendario', detail: 'Tus registros por fecha', icon: 'calendar', press: () => router.navigate('/history/calendar') },
-      { id: 'views', title: 'Mis vistas', detail: 'Lo que elegiste seguir', icon: 'pin', press: () => router.navigate('/(tabs)/progress/saved-views') },
     ] },
     { title: 'Comparar y descubrir', detail: 'Períodos, sesiones y lo que coincide con tus días.', items: [
       { id: 'compare', title: 'Comparar períodos', detail: 'Dos períodos, tus fechas', icon: 'compare', primary: true, press: () => onTool('compare') },

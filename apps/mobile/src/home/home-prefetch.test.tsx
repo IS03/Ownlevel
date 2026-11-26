@@ -10,6 +10,8 @@ import { useHomeResources } from './home-data';
 import { useNutritionReportResource } from '@/nutrition/report-resource';
 
 let mockWarmEnabled = true;
+const mockPanorama = jest.fn(() => () => {});
+jest.mock('@/progress/panorama-resource', () => ({ prefetchPanorama: () => mockPanorama() }));
 let mockTodayUnavailable = false;
 let mockEvents: { name: string; at: number }[] = [];
 const mockBase = Date.parse('2026-10-02T15:00:00Z');
@@ -30,7 +32,7 @@ jest.mock('@/nutrition/day-resource', () => ({
     ? jest.requireActual<typeof import('@/nutrition/day-resource')>('@/nutrition/day-resource').prefetchNutritionWeek(...args) : () => {},
 }));
 const now = () => new Date(Date.now());
-beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(mockBase); mockEvents = []; mockWarmEnabled = true; mockTodayUnavailable = false; });
+beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(mockBase); mockEvents = []; mockWarmEnabled = true; mockTodayUnavailable = false; mockPanorama.mockClear(); });
 afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 const today = '2026-10-02';
 const days = nutritionWeek(today);
@@ -74,7 +76,9 @@ it('warms the whole visible week in one call after all seven Home reads settle',
   expect(mockEvents).toHaveLength(7); expect(read).not.toHaveBeenCalled();
   await advance(999); expect(read).not.toHaveBeenCalled();
   await advance(1); expect(read).toHaveBeenCalledTimes(1);
+  expect(mockPanorama).not.toHaveBeenCalled();
   await advance(3000);
+  expect(mockPanorama).toHaveBeenCalledTimes(1);
   const day = renderHook(({ date }: { date: string }) => useNutritionDayResource(client, date), { initialProps: { date: days[0] } });
   for (const date of days) {
     day.rerender({ date });

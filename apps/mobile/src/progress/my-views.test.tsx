@@ -93,6 +93,14 @@ describe('Mis vistas', () => {
     fireEvent.press(view.getByTestId('my-views-edit'));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/views');
   });
+  it('uses the explicit portada window even if the shared range differs', async () => {
+    const query = { period: 'custom' as const, from: '2026-09-06', to: TODAY };
+    mockViews.mockResolvedValueOnce(ok(read('two')));
+    const view = wrap(<MyViews portadaQuery={query} />);
+    await flush();
+    expect(mockViews).toHaveBeenLastCalledWith(mockClient, query);
+    expect(view.getByTestId(`my-view-${A}`)).toBeTruthy();
+  });
   it('empty is useful and neutral, and a failed read is never shown as empty', async () => {
     mockViews.mockResolvedValueOnce(ok(read('none')));
     const view = wrap(<MyViews />); await flush();

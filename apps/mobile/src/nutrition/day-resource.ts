@@ -29,14 +29,18 @@ export function prefetchNutritionDays(client: MobileApiClient | null, dates: rea
 const weekUnsupported = new WeakSet<MobileApiClient>();
 
 /** Exactly the seven dates the Nutrition strip represents, with future days left to individual reads. */
-export function prefetchNutritionWeek(client: MobileApiClient, date: string, today = nutritionToday(), fromHome = false) {
+export function prefetchNutritionWeek(client: MobileApiClient, date: string, today = nutritionToday(), fromHome = false, after?: () => () => void) {
   const scope = nutritionToday(), limit = today < scope ? today : scope;
   const fallback = () => prefetchNutritionDays(client, fromHome
     ? [date, shiftNutritionDate(date, -1)]
     : [shiftNutritionDate(date, -1), shiftNutritionDate(date, 1)], limit);
-  if (weekUnsupported.has(client)) return fallback();
+  if (weekUnsupported.has(client)) {
+    const stopFallback = fallback();
+    const stopAfter = after?.();
+    return () => { stopFallback(); stopAfter?.(); };
+  }
   const dates = nutritionWeek(date, today).filter(candidate => isNutritionDate(candidate) && candidate <= limit);
-  if (!dates.length) return () => {};
+  if (!dates.length) return after?.() ?? (() => {});
 
   const cache = confirmedReads(client);
   const entry = cache.get('nutrition-week', scopedReadKey(`${dates[0]}|${dates.at(-1)}`, scope), async signal => {
@@ -51,12 +55,18 @@ export function prefetchNutritionWeek(client: MobileApiClient, date: string, tod
     return result;
   });
   let stopFallback: (() => void) | undefined;
-  const unsubscribe = entry.resource.subscribe(() => {
+  let stopAfter: (() => void) | undefined;
+  const proceed = () => {
     const state = entry.resource.getSnapshot();
-    if (state.status !== 'unavailable' || state.result.meta.httpStatus !== 404 || stopFallback) return;
-    weekUnsupported.add(client);
-    stopFallback = fallback();
-  });
+    if (state.status === 'loading' || (state.status === 'ready' && state.refreshing)) return;
+    if (state.status === 'unavailable' && state.result.meta.httpStatus === 404 && !stopFallback) {
+      weekUnsupported.add(client);
+      stopFallback = fallback();
+    }
+    stopAfter ??= after?.();
+  };
+  const unsubscribe = entry.resource.subscribe(proceed);
   const stop = cache.prefetch([entry]);
-  return () => { stop(); unsubscribe(); stopFallback?.(); };
+  proceed();
+  return () => { stop(); unsubscribe(); stopFallback?.(); stopAfter?.(); };
 }

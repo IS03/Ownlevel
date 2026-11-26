@@ -1,14 +1,14 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
-import { useCachedRead } from '@/api/use-cached-read';
-import { fetchProgressFindings, type ProgressEditorialFinding, type ProgressOverview, type ProgressDestination, type ProgressSpark } from '@/api/progress';
-import { AppIcon, AppText, Button, GlassSurface, brandTokens, radius, useOwnlevelTheme, ChipGroup, SegmentedControl, InlineUnavailable, SkeletonBlock, UnavailableState, spacing } from '@/design-system';
+import type { ProgressEditorialFinding, ProgressOverview, ProgressDestination, ProgressSpark } from '@/api/progress';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { AppIcon, AppText, Button, GlassSurface, brandTokens, radius, useOwnlevelTheme, ChipGroup, SegmentedControl, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, usePullRefresh, useReduceMotion } from '@/design-system';
 import { exactPeriodRange } from '@/insights/period-model';
-import { addDays, progressStateForRange, shortRange, type DateRange } from './progress-range';
-import { fetchHistoryRange } from '@/api/history';
-import { fetchNutritionReport, reportQueryKey } from '@/api/nutrition-report';
+import { progressStateForRange, shortRange, type DateRange } from './progress-range';
+import { usePanoramaReads } from './panorama-resource';
+import { MyViews } from './my-views';
 import { PanoramaAtlas, type AtlasDaily } from './panorama-atlas';
 import { PanoramaTools, type PortadaTool } from './panorama-tools';
 import { ProgressFindings } from './progress-findings';
@@ -98,22 +98,68 @@ export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => un
   </>;
 }
 
+const PANORAMA_WAIT_MS = 1500;
+
+function PanoramaSkeleton() {
+  const { fontScale, width } = useWindowDimensions();
+  const stacked = fontScale > 1.3 || width < 360;
+  return <View accessible accessibilityLabel="Cargando resumen de Progreso" accessibilityState={{ busy: true }}
+    style={styles.skeleton} testID="panorama-skeleton">
+    <View style={styles.skeletonPanel}>
+      <SkeletonBlock width="50%" height={spacing.lg} />
+      <View style={[styles.skeletonRow, stacked && styles.stacked]}>
+        <View style={styles.skeletonNumber}>
+          <SkeletonBlock width={spacing.xxxl} height={brandTokens.layout.minTouch} />
+          <SkeletonBlock width={spacing.xxxl} height={spacing.sm} />
+        </View>
+        <View style={styles.skeletonCalendar}>
+          {[0, 1, 2, 3, 4].map(week => <View key={week} style={styles.skeletonWeek}>
+            {[0, 1, 2, 3, 4, 5, 6].map(day => <View style={styles.grow} key={day}><SkeletonBlock height={spacing.lg} /></View>)}
+          </View>)}
+        </View>
+      </View>
+      <SkeletonBlock width="55%" height={spacing.sm} />
+    </View>
+    <View style={[styles.skeletonRow, stacked && styles.stacked]}>
+      <View style={styles.skeletonArea}>
+        <SkeletonBlock width="55%" height={spacing.lg} />
+        <SkeletonBlock width="70%" height={spacing.xl} />
+        <View style={styles.skeletonPlot}>{[spacing.md, spacing.xl, spacing.lg, spacing.xxl].map(height =>
+          <SkeletonBlock key={height} width={spacing.xs} height={height} />)}</View>
+      </View>
+      <View style={styles.skeletonArea}>
+        <SkeletonBlock width="60%" height={spacing.lg} />
+        <SkeletonBlock width="85%" height={spacing.xl} />
+        <View style={styles.skeletonPlot}>{[spacing.lg, spacing.xl, spacing.md, spacing.xxl, spacing.lg, spacing.md].map((height, index) =>
+          <SkeletonBlock key={index} width={spacing.sm} height={height} />)}</View>
+      </View>
+    </View>
+  </View>;
+}
+
 function OverviewContent({selected, onSelect, contextOpen, onContextToggle, points, onPoint, previewKind, onPreviewKind}: {selected: string | null; onSelect: (id: string | null) => void; contextOpen: boolean; onContextToggle: () => void;
   previewKind: SparkKind; onPreviewKind: (kind: SparkKind) => void; points: SparkPoints; onPoint: (kind: SparkKind, key: string | null) => void}) {
     const { client } = useMobileApi(), router = useRouter(), { today, state: rangeState, setState } = useProgressRange();
     const [comparing, setComparing] = useState(false);
-    const from = addDays(today, -29);
-    const query = useMemo(() => ({ period: 'custom' as const, from, to: today }), [from, today]);
-    const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressFindings(c, { period: 'custom', from, to: today }, signal), [from, today]);
-    const { state, data, refresh } = useCachedRead(client, 'overview', `panorama-v2|${from}|${today}`, load);
-    const historyLoad = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchHistoryRange(c, { from: query.from, to: query.to }, signal), [query]);
-    const reportLoad = useCallback((c: NonNullable<typeof client>, signal: AbortSignal, background?: boolean) => fetchNutritionReport(c, query, signal, background), [query]);
-    const history = useCachedRead(data ? client : null, 'overview', `panorama-calendar|${from}|${today}`, historyLoad);
-    const report = useCachedRead(data ? client : null, 'nutrition-report', reportQueryKey(query), reportLoad);
-    const refreshAll = () => Promise.all([refresh(), history.refresh(), report.refresh()]);
+    const reduced = useReduceMotion();
+    const { query, summary, history, report } = usePanoramaReads(client, today);
+    const { from } = query, { state, data, refresh } = summary;
+    const { refresh: refreshHistory } = history, { refresh: refreshReport } = report;
+    const refreshAll = useCallback(async () => { await Promise.all([refresh(), refreshHistory(), refreshReport()]); },
+      [refresh, refreshHistory, refreshReport]);
+    const pull = usePullRefresh(refreshAll);
+    const historyLoading = history.state.status === 'loading', reportLoading = report.state.status === 'loading';
+    const waiting = state.status === 'loading' || historyLoading || reportLoading;
+    const [expiredWindow, setExpiredWindow] = useState<string | null>(null);
+    useEffect(() => {
+      if (!waiting || expiredWindow === today) return;
+      const timer = setTimeout(() => setExpiredWindow(today), PANORAMA_WAIT_MS);
+      return () => clearTimeout(timer);
+    }, [expiredWindow, today, waiting]);
+    const holding = waiting && expiredWindow !== today && (state.status === 'loading' || state.status === 'ready');
     const daily: AtlasDaily = { history: history.data, report: report.data,
       historyStale: history.state.status === 'unavailable' && !!history.data, reportStale: report.state.status === 'unavailable' && !!report.data,
-      loading: history.state.status === 'loading' || report.state.status === 'loading' };
+      historyLoading, reportLoading };
 
     const open = (d: ProgressDestination, point?: PortadaPoint | null, finding?: ProgressEditorialFinding) => {
         // Training/exercise details also use the shared range; set it before mounting their reader.
@@ -138,10 +184,23 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
         if (next) setState({ ...next, compare: { kind: 'none' } });
         router.push('/(tabs)/progress/trends/meal-times');
     };
-    return <><ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={(state.status === 'ready' && state.refreshing) || (history.state.status === 'ready' && history.state.refreshing) || (report.state.status === 'ready' && report.state.refreshing)} onRefresh={() => void refreshAll()}/>}>
-   {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refreshAll()}/> : null}<ProgressPanorama data={data} daily={daily} onOpen={open} points={points} onPoint={onPoint} previewKind={previewKind} onPreviewKind={onPreviewKind} expanded={contextOpen} onToggle={onContextToggle}/><ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
-   <PanoramaTools today={today} onTool={tool}/>
- </ProgressScroll>
+    return <>
+      <ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl {...pull} />}>
+        {holding ? <PanoramaSkeleton />
+          : data ? <>
+            {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada."
+              actionLabel="Reintentar" onAction={() => void refreshAll()} /> : null}
+            <Animated.View entering={reduced ? undefined : FadeIn.duration(brandTokens.motion.duration.fast)} style={styles.overview}>
+              <ProgressPanorama data={data} daily={daily} onOpen={open} points={points} onPoint={onPoint}
+                previewKind={previewKind} onPreviewKind={onPreviewKind} expanded={contextOpen} onToggle={onContextToggle} />
+            </Animated.View>
+          </> : state.status === 'loading' ? <PanoramaSkeleton /> : <UnavailableState title="No pudimos leer tu progreso"
+            description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refreshAll()} />} />}
+        <MyViews portadaQuery={query} />
+        {data && !holding ? <ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'}
+          selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)} /> : null}
+        <PanoramaTools today={today} onTool={tool} />
+      </ProgressScroll>
  {comparing ? <CompareSheet proposal={{start: from, end: today}} onClose={() => setComparing(false)} onApplied={() => router.push('/(tabs)/progress/compare')} /> : null}</>;
 }
 /** Unmount this reading while the tab/route is hidden; confirmed cache restores it synchronously on return. */
@@ -165,5 +224,15 @@ const styles = StyleSheet.create({
   pointsControl: { borderRadius: radius.button, overflow: 'hidden', marginVertical: spacing.sm },
   pointsButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, minHeight: brandTokens.layout.buttonHeight }, grow: { flex: 1 },
   preview: { gap: spacing.md },
+  overview: { gap: spacing.sm },
+  skeleton: { gap: spacing.lg },
+  skeletonPanel: { padding: brandTokens.layout.cardPadding, gap: spacing.md },
+  skeletonRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  stacked: { flexDirection: 'column', alignItems: 'stretch' },
+  skeletonNumber: { gap: spacing.sm },
+  skeletonCalendar: { flex: 1, gap: spacing.xs },
+  skeletonWeek: { flexDirection: 'row', gap: spacing.xs },
+  skeletonArea: { flex: 1, gap: spacing.sm },
+  skeletonPlot: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', gap: spacing.xs },
   expanded: { gap: spacing.lg, paddingVertical: spacing.md },
 });

@@ -25,8 +25,8 @@ async function performanceVersion<T>(read: (version: 1 | 2) => Promise<MobileApi
   const result = await read(2);
   return result.status === 'unavailable' && result.meta.httpStatus === 400 && !signal?.aborted ? read(1) : result;
 }
-export const fetchProgressOverview = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  performanceVersion(version => client.read({ path: `${BASE}?${qs(query, compare)}&spark=1&inPeriod=${version}`, signal, parse: (raw: unknown) => {
+export const fetchProgressOverview = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null, background = false) =>
+  performanceVersion(version => client.read({ path: `${BASE}?${qs(query, compare)}&spark=1&inPeriod=${version}`, signal, ...(background ? { background } : {}), parse: (raw: unknown) => {
     const data = parseProgressOverview(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
   } }), signal);
 export const fetchProgressBody = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
@@ -89,16 +89,16 @@ export const fetchProgressExplore = (client: MobileApiClient, query: ProgressQue
     } });
 
 /** Same bounded overview read; opt-in exact dates and nutrient denominators, no extra sources. */
-export const fetchProgressPanorama=async(client:MobileApiClient,query:ProgressQuery,signal?:AbortSignal)=>{
- const result=await client.read({path:`${BASE}?${qs(query)}&spark=1&inPeriod=2&panorama=1`,signal,parse:(raw:unknown)=>{const data=parseProgressOverview(raw);return data&&samePeriod(data.period,query)?data:undefined;}});
+export const fetchProgressPanorama=async(client:MobileApiClient,query:ProgressQuery,signal?:AbortSignal,background=false)=>{
+ const result=await client.read({path:`${BASE}?${qs(query)}&spark=1&inPeriod=2&panorama=1`,signal,...(background ? { background } : {}),parse:(raw:unknown)=>{const data=parseProgressOverview(raw);return data&&samePeriod(data.period,query)?data:undefined;}});
  // Older servers reject the opt-in parameter. One read-only compatibility fallback; never on auth/network errors.
- return result.status==='unavailable'&&result.meta.httpStatus===400&&!signal?.aborted?fetchProgressOverview(client,query,signal):result;
+ return result.status==='unavailable'&&result.meta.httpStatus===400&&!signal?.aborted?fetchProgressOverview(client,query,signal,null,background):result;
 };
 
 /** Editorial metadata shares the overview request. A server without it still supplies the complete panorama. */
-export const fetchProgressFindings = async (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal) => {
-  const result = await client.read({path: `${BASE}?${qs(query)}&spark=1&inPeriod=2&panorama=1&findings=1`, signal, parse: (raw: unknown) => {
+export const fetchProgressFindings = async (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, background = false) => {
+  const result = await client.read({path: `${BASE}?${qs(query)}&spark=1&inPeriod=2&panorama=1&findings=1`, signal, ...(background ? { background } : {}), parse: (raw: unknown) => {
     const data = parseProgressOverview(raw); return data && samePeriod(data.period, query) ? data : undefined;
   }});
-  return result.status === 'unavailable' && result.meta.httpStatus === 400 && !signal?.aborted ? fetchProgressPanorama(client, query, signal) : result;
+  return result.status === 'unavailable' && result.meta.httpStatus === 400 && !signal?.aborted ? fetchProgressPanorama(client, query, signal, background) : result;
 };
