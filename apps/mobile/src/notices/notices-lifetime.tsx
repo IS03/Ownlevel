@@ -3,12 +3,14 @@ import { useEffect, useState, type PropsWithChildren } from 'react';
 import { AppState, Platform } from 'react-native';
 import { useMobileAuth } from '@/auth';
 import { homeDay } from '@/home/home-day';
-import { useNoticePreferences } from './notice-preferences';
+import { noticePreferences, useNoticePreferences } from './notice-preferences';
 import { observeTodayNutrition } from '@/api/nutrition-day';
 import { closeDayStatus, type DayStatus } from './close-day';
 import { registeredMoments } from './meal-reminders';
 import { trainingStatus, type TrainingStatus } from './training-reminders';
 import { observeTraining } from '@/api/training';
+import { observeBody } from '@/api/body';
+import { bodyFacts } from './body-reminders';
 import { currentMealMomentBands } from '@/nutrition/moment-bands-store';
 import { planReminders, REMINDER_PREFIX, reminderCategories, syncReminders, type ReminderCategory } from './reminder-engine';
 
@@ -50,6 +52,11 @@ export function NoticesLifetime({ children, categories = reminderCategories, syn
   useEffect(() => {
     if (!owner) return;
     return observeTraining((response, month) => { const value = trainingStatus(response, month, homeDay().today); if (value) setTraining({ owner, value }); });
+  }, [owner]);
+  // What a Cuerpo reading confirms is kept with the preferences: Cuerpo is read only on its screens, not at every start.
+  useEffect(() => {
+    if (!owner) return;
+    return observeBody(overview => { void noticePreferences(owner).setFacts(bodyFacts(overview)); });
   }, [owner]);
   useEffect(() => {
     if (!owner || !ready) return;

@@ -13,10 +13,16 @@ import { writeAccountRecord } from '@/platform/account-local-data';
  */
 /** `days`: weekdays (0 Sunday … 6 Saturday) a reminder runs on; `afterDays`: days without the thing before it reminds. */
 export type ReminderSetting = { enabled: boolean; hour: number; minute: number; days?: number[]; afterDays?: number };
+/**
+ * What confirmed readings said, kept so a reminder can decide after the app restarts (Cuerpo is read only on its screens).
+ * Absent means never read on this device (no reminder that depends on it); null means read, and there is none.
+ */
+export type NoticeFacts = { lastWeightOn?: string | null; lastMeasurementOn?: string | null };
 export type NoticePreferences = {
   workoutActivity: boolean; mealActivity: boolean; lockDetail: boolean;
   pausedUntil: number | 'manual' | null;
   reminders: Record<string, ReminderSetting>;
+  facts?: NoticeFacts;
 };
 export const defaultNoticePreferences: NoticePreferences = { workoutActivity: true, mealActivity: true, lockDetail: true, pausedUntil: null, reminders: {} };
 
@@ -39,7 +45,13 @@ export function parseNoticePreferences(value: unknown): NoticePreferences {
   if (v.reminders && typeof v.reminders === 'object') for (const [key, item] of Object.entries(v.reminders as Record<string, unknown>)) {
     const parsed = reminder(item); if (parsed) reminders[key] = parsed;
   }
-  return { workoutActivity: bool(v.workoutActivity, true), mealActivity: bool(v.mealActivity, true), lockDetail: bool(v.lockDetail, true), pausedUntil: paused, reminders };
+  const date = (value: unknown) => value === null ? null : typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+  const rawFacts = v.facts && typeof v.facts === 'object' ? v.facts as Record<string, unknown> : {};
+  const facts: NoticeFacts = {};
+  if (date(rawFacts.lastWeightOn) !== undefined) facts.lastWeightOn = date(rawFacts.lastWeightOn);
+  if (date(rawFacts.lastMeasurementOn) !== undefined) facts.lastMeasurementOn = date(rawFacts.lastMeasurementOn);
+  return { workoutActivity: bool(v.workoutActivity, true), mealActivity: bool(v.mealActivity, true), lockDetail: bool(v.lockDetail, true), pausedUntil: paused, reminders,
+    ...(Object.keys(facts).length ? { facts } : {}) };
 }
 /** Reminders are paused now (a timed pause that ended reads as not paused). */
 export const remindersPaused = (preferences: NoticePreferences, now = Date.now()) =>
@@ -58,21 +70,37 @@ export class NoticePreferencesStore {
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(next: Snapshot) { this.snapshot = next; this.listeners.forEach(listener => listener()); }
-  async load() {
-    try {
-      const raw = await this.port.getItem(this.key);
-      // A change made while reading wins over what was stored.
-      if (!this.snapshot.ready) this.publish({ preferences: raw === null ? defaultNoticePreferences : parseNoticePreferences(JSON.parse(raw)), ready: true, persistenceFailed: false });
-    } catch { if (!this.snapshot.ready) this.publish({ ...this.snapshot, ready: true }); }
+  private loading: Promise<void> | null = null;
+  /** Reads the stored preferences once; every change waits for it, so nothing stored is ever written over unread. */
+  load() {
+    this.loading ??= (async () => {
+      try {
+        const raw = await this.port.getItem(this.key);
+        this.publish({ preferences: raw === null ? defaultNoticePreferences : parseNoticePreferences(JSON.parse(raw)), ready: true, persistenceFailed: false });
+      } catch { this.publish({ ...this.snapshot, ready: true }); }
+    })();
+    return this.loading;
   }
-  update(patch: Partial<NoticePreferences>) {
+  /** A patch on what is stored: applied once the stored preferences were read. */
+  update(patch: Partial<NoticePreferences>): Promise<unknown> {
+    if (!this.snapshot.ready) return this.load().then(() => this.update(patch));
     const preferences = { ...this.snapshot.preferences, ...patch };
     this.publish({ preferences, ready: true, persistenceFailed: false });
     this.writes = this.writes.catch(() => undefined).then(() => writeAccountRecord(this.port, this.key, JSON.stringify(preferences)))
       .catch(() => { if (this.snapshot.preferences === preferences) this.publish({ ...this.snapshot, persistenceFailed: true }); });
     return this.writes;
   }
-  setReminder(id: string, setting: ReminderSetting) { return this.update({ reminders: { ...this.snapshot.preferences.reminders, [id]: setting } }); }
+  /** Only when they change: a reading saying the same thing writes nothing. */
+  setFacts(facts: NoticeFacts): Promise<unknown> {
+    if (!this.snapshot.ready) return this.load().then(() => this.setFacts(facts));
+    const current = this.snapshot.preferences.facts ?? {}, next = { ...current, ...facts };
+    if (JSON.stringify(next) === JSON.stringify(current)) return this.writes;
+    return this.update({ facts: next });
+  }
+  setReminder(id: string, setting: ReminderSetting): Promise<unknown> {
+    if (!this.snapshot.ready) return this.load().then(() => this.setReminder(id, setting));
+    return this.update({ reminders: { ...this.snapshot.preferences.reminders, [id]: setting } });
+  }
 }
 
 const stores = new Map<string, NoticePreferencesStore>();

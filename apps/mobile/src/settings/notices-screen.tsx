@@ -6,6 +6,7 @@ import { remindersPaused, useNoticePreferences, type NoticePreferences, type Rem
 import { defaultMealReminder, MEAL_MOMENTS, mealMomentNames, mealReminderId } from '@/notices/meal-reminders';
 import { useMealMomentBands } from '@/nutrition/moment-bands-provider';
 import { defaultTrainingDays, defaultTrainingReturn, TRAINING_DAYS, TRAINING_RETURN } from '@/notices/training-reminders';
+import { BODY_MEASURES, BODY_WEIGHT, defaultBodyMeasures, defaultBodyWeight } from '@/notices/body-reminders';
 import { DEFAULT_MEAL_MOMENT_BANDS } from '@/api/nutrition-moment-bands';
 import { reminderCategories, type ReminderCategory } from '@/notices/reminder-engine';
 import { RestAlertOption } from '@/training/session-rest-alert-option';
@@ -59,10 +60,20 @@ function ReminderRow({ id, title, detail, setting, onChange, writable, testID, c
   </View>;
 }
 
+type Every = '14' | '28';
+const EVERY: { value: Every; label: string }[] = [{ value: '14', label: 'Cada 2 semanas' }, { value: '28', label: 'Cada 4 semanas' }];
 type ReturnDays = '3' | '4' | '5' | '7';
 const RETURN_DAYS: { value: ReturnDays; label: string }[] = [{ value: '3', label: '3 días' }, { value: '4', label: '4 días' }, { value: '5', label: '5 días' }, { value: '7', label: '7 días' }];
 const WEEKDAYS: { day: number; short: string; name: string }[] = [{ day: 1, short: 'L', name: 'lunes' }, { day: 2, short: 'M', name: 'martes' },
   { day: 3, short: 'X', name: 'miércoles' }, { day: 4, short: 'J', name: 'jueves' }, { day: 5, short: 'V', name: 'viernes' }, { day: 6, short: 'S', name: 'sábado' }, { day: 0, short: 'D', name: 'domingo' }];
+
+/** Weekday chips: several (`multiple`) or one. */
+function Weekdays({ label, chosen, multiple, disabled, onChange }: { label: string; chosen: number[]; multiple: boolean; disabled: boolean; onChange: (days: number[]) => void }) {
+  return <View accessibilityLabel={label} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+    {WEEKDAYS.map(({ day, short, name }) => <Chip key={day} kind={multiple ? 'toggle' : 'radio'} label={short} accessibilityLabel={name} selected={chosen.includes(day)} disabled={disabled}
+      onPress={() => onChange(!multiple ? [day] : chosen.includes(day) ? chosen.filter(item => item !== day) : [...chosen, day].sort())} />)}
+  </View>;
+}
 
 /**
  * #639 · Ajustes → Avisos y actividades en vivo. What this iPhone shows for this account: the Live Activities, the names on
@@ -122,6 +133,24 @@ export function NoticesSettingsScreen({ categories = reminderCategories, now = D
             setting={back} onChange={set(TRAINING_RETURN)} writable={!!store} testID="reminder-training-return">
             <SettingsSegmented accessibilityLabel="Días sin entrenar" options={RETURN_DAYS} value={String(after) as ReturnDays}
               onChange={value => set(TRAINING_RETURN)({ ...back, afterDays: Number(value) })} />
+          </ReminderRow>;
+        })()}
+        <AppText variant="subheadline" style={{ fontWeight: '600' }}>Cuerpo</AppText>
+        {(() => {
+          const weight = preferences.reminders[BODY_WEIGHT] ?? defaultBodyWeight;
+          return <ReminderRow id={BODY_WEIGHT} title="Pesaje" detail="Los días que elijas, si ese día todavía no registraste tu peso."
+            setting={weight} onChange={set(BODY_WEIGHT)} writable={!!store} testID="reminder-body-weight">
+            <Weekdays label="Días de pesaje" chosen={weight.days ?? []} multiple disabled={!store} onChange={days => set(BODY_WEIGHT)({ ...weight, days })} />
+          </ReminderRow>;
+        })()}
+        {(() => {
+          const measures = preferences.reminders[BODY_MEASURES] ?? defaultBodyMeasures, every = String(measures.afterDays ?? 28) as Every;
+          return <ReminderRow id={BODY_MEASURES} title="Medidas" detail={`${every === '14' ? 'Cada 2 semanas' : 'Cada 4 semanas'} desde tus últimas medidas, el día que elijas.`}
+            setting={measures} onChange={set(BODY_MEASURES)} writable={!!store} testID="reminder-body-measures">
+            <Weekdays label="Día de medidas" chosen={measures.days ?? []} multiple={false} disabled={!store} onChange={days => set(BODY_MEASURES)({ ...measures, days })} />
+            <SettingsSegmented accessibilityLabel="Frecuencia de medidas" options={EVERY} value={every} onChange={value => set(BODY_MEASURES)({ ...measures, afterDays: Number(value) })} />
+            {preferences.facts?.lastMeasurementOn === undefined
+              ? <AppText muted variant="footnote">Empieza cuando abras Cuerpo en Progreso y la app vea tus últimas medidas.</AppText> : null}
           </ReminderRow>;
         })()}
         <Toggle title="Pausar recordatorios" detail={paused ? preferences.pausedUntil === 'manual' ? 'Pausados hasta que los reactives.' : `Pausados hasta el ${until(preferences.pausedUntil as number)}.` : 'Ninguno se programa mientras están pausados.'}
