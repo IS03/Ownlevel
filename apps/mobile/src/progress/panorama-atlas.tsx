@@ -11,7 +11,7 @@ import { formatValue } from './progress-format';
 import { shortRange } from './progress-range';
 import { panoramaCalendar, panoramaCalories, panoramaWeightGeometry } from './panorama-model';
 
-export type AtlasDaily = { history?: HistoryRange; report?: NutritionReport; historyStale?: boolean; reportStale?: boolean; loading?: boolean };
+export type AtlasDaily = { history?: HistoryRange; report?: NutritionReport; historyStale?: boolean; reportStale?: boolean; historyLoading?: boolean; reportLoading?: boolean };
 const value = (n: number, unit: string) => formatValue(unit === 'kg' ? Math.round(n * 10) / 10 : n, unit, unit === 'kg' ? undefined : 'integer');
 
 function Area({ label, title, hint, onPress, children }: { label: string; title: string; hint: string; onPress: () => void; children: ReactNode }) {
@@ -59,7 +59,7 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
   const cells = panoramaCalendar(data, daily?.history), days = panoramaCalories(data, daily?.report);
   const max = Math.max(1, ...(cells ?? []).map(d => d?.count ?? 0));
   const ink = { text: colors.text, textMuted: colors.textMuted }, intensity = brandTokens.intensity[isDark ? 'dark' : 'light'];
-  const calendarText = cells ? `${t!.trainingDays} días con sesiones finalizadas. ${cells.filter(d => d && d.count > 0).map(d => `${exactPeriodDate(d!.date)}: ${d!.count}`).join('. ')}. Los demás días de la ventana no tienen sesiones finalizadas registradas.` : 'Calendario diario no disponible en esta lectura.';
+  const calendarText = cells ? `${t!.trainingDays} días con sesiones finalizadas. ${cells.filter(d => d && d.count > 0).map(d => `${exactPeriodDate(d!.date)}: ${d!.count}`).join('. ')}. Los demás días de la ventana no tienen sesiones finalizadas registradas.` : daily?.historyLoading ? 'Calendario pendiente.' : 'Calendario diario no disponible en esta lectura.';
   const trainingHint = [t ? `${t.sessions} sesiones finalizadas, ${t.trainingDays} días entrenados, ${t.sets} series.` : 'Entrenamiento no disponible.', calendarText,
     daily?.historyStale ? 'Calendario sin actualizar; última lectura confirmada.' : ''].join(' ');
   const weightHint = data.body.status !== 'ok' ? 'Cuerpo no disponible.' : w?.last
@@ -86,7 +86,7 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
               <View style={styles.week}>{['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((d, i) => <AppText key={i} variant="caption" style={[styles.weekday, { color: ink.textMuted }]}>{d}</AppText>)}</View>
               <View style={styles.cells}>{cells.map((d, i) => <View key={d?.date ?? `blank${i}`} testID={d ? `panorama-day-${d.date}-${d.count}` : undefined}
                 style={styles.cellSlot}><View style={[styles.cell, isDark && d?.count === 0 && { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }, { backgroundColor: intensity[d ? d.count === 0 ? 0 : Math.max(1, Math.ceil(d.count / max * 4)) : 0], opacity: d ? 1 : 0 }]} /></View>)}</View>
-            </> : <View style={styles.calendarPlaceholder}><AppText variant="caption" style={{ color: ink.textMuted }}>{daily?.loading ? 'Leyendo los días…' : 'Calendario diario no disponible.'}</AppText></View>}
+            </> : <View style={styles.calendarPlaceholder}><AppText variant="caption" style={{ color: ink.textMuted }}>{daily?.historyLoading ? 'Calendario pendiente' : 'Calendario diario no disponible.'}</AppText></View>}
           </View>
         </View>
         <AppText numeric variant="footnote" style={[styles.trainingFooter, { color: ink.text }]}>{t ? `${t.trainingDays} ${t.trainingDays === 1 ? 'día entrenado' : 'días entrenados'} · ${t.sets} ${t.sets === 1 ? 'serie' : 'series'}` : 'No pudimos leer Entrenamiento.'}</AppText>
@@ -107,7 +107,7 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
         <Area title="Nutrición" label="Ver alimentación y objetivos" hint={nutritionHint} onPress={() => onOpen({ kind: 'nutrition' })}>
           <View style={[styles.nutritionNumber, fontScale > 1.3 && styles.stacked]}><AppText numeric variant="title1">{!n ? '—' : n.averageKcal === null ? 'Sin promedio' : formatValue(n.averageKcal, null, 'integer')}</AppText>{n ? <View><AppText muted variant="caption">kcal/día</AppText><AppText muted variant="caption">promedio</AppText></View> : null}</View>
           {!n ? <AppText muted variant="footnote">No pudimos leer Nutrición.</AppText> : <>
-            {days?.length ? <CalorieStrip days={days} /> : <View style={styles.plot}><AppText muted variant="caption">{daily?.loading ? 'Leyendo los días…' : days ? 'Sin días con calorías conocidas.' : 'Distribución diaria no disponible.'}</AppText></View>}
+            {days?.length ? <CalorieStrip days={days} /> : <View style={styles.plot}><AppText muted variant="caption">{daily?.reportLoading ? 'Distribución pendiente' : days ? 'Sin días con calorías conocidas.' : 'Distribución diaria no disponible.'}</AppText></View>}
             <AppText numeric variant="footnote" style={styles.protein}>Proteína {n.averageProteinG === null ? 'sin promedio' : `${value(n.averageProteinG, 'g')}/día`}</AppText>
             {days?.some(d => d.partial) ? <AppText muted variant="caption">Barras suaves: días con suma parcial.</AppText> : null}
             {daily?.reportStale ? <AppText muted variant="caption">Distribución: última lectura confirmada; no pudimos actualizar.</AppText> : null}

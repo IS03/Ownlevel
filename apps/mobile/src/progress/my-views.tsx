@@ -4,13 +4,14 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressViews, influenceDefinitionOf, isInfluenceView, PROGRESS_VIEWS_MAX, type ExploreViewDefinition, type ProgressViewsRead } from '@/api/progress-views';
-import { progressRequestKey } from '@/api/progress';
+import { progressRequestKey, type ProgressQuery } from '@/api/progress';
 import { AppIcon, AppText, Heading, InlineUnavailable, SkeletonBlock, spacing, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { aggregationText } from './explore-model';
 import { valueText } from './explore-screen';
 import { shortAnswer, valueText as influenceValueText } from './influence-model';
 import { MiniChart } from './mini-chart';
+import { progressStateForRange } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
 import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
@@ -83,14 +84,20 @@ function tileFigure(view: ProgressViewsRead['views'][number]): string {
 }
 
 /** S1 · Mis vistas, on top of Progreso: saved queries in the shared period. Empty is useful and neutral. */
-export function MyViews({ standalone = false }: { standalone?: boolean }) {
+export function MyViews({ standalone = false, portadaQuery }: { standalone?: boolean; portadaQuery?: ProgressQuery }) {
   const router = useRouter();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const { query, compare } = useProgressRange();
+  const range = useProgressRange();
+  const query = portadaQuery ?? range.query, compare = portadaQuery ? null : range.compare;
   const load = useCallback((c: NonNullable<typeof client>, s: AbortSignal) => fetchProgressViews(c, query, s, compare), [query, compare]);
   const { state, data, refresh } = useProgressResource(client, `views|${progressRequestKey(query, compare)}`, load);
-  const explore = (params: Record<string, string> = {}) => { haptics.selection(); router.push({ pathname: '/(tabs)/progress/explore', params }); };
+  const inheritPortadaRange = () => {
+    if (!portadaQuery?.from || !portadaQuery.to) return;
+    const next = progressStateForRange(portadaQuery.from, portadaQuery.to, range.state, range.today);
+    if (next) range.setState({ ...next, compare: { kind: 'none' } });
+  };
+  const explore = (params: Record<string, string> = {}) => { haptics.selection(); inheritPortadaRange(); router.push({ pathname: '/(tabs)/progress/explore', params }); };
   const views = data?.views ?? [];
   const { width, fontScale, onLayout } = useMeasuredWidth();
   // Two per row only while every figure fits whole; with large text or long figures, one per row. Never a smaller number.
@@ -102,12 +109,19 @@ export function MyViews({ standalone = false }: { standalone?: boolean }) {
         <AppText variant="headline" style={{ color: colors.primary }}>Editar</AppText>
       </Pressable> : null}
     </View>
-    {state.status === 'loading' ? <SkeletonBlock height={84} />
+    {state.status !== 'ready' && data ? <InlineUnavailable actionLabel="Reintentar"
+      message="Mostramos tus últimas vistas confirmadas." onAction={() => void refresh()} /> : null}
+    {state.status === 'loading' ? <View style={styles.grid} testID="my-views-skeleton">
+      {Array.from({ length: fontScale > 1.3 ? 1 : 2 }, (_, index) => <View key={index} style={fontScale > 1.3 ? styles.single : styles.cell}>
+        <SkeletonBlock height={spacing.xl} width="68%" />
+        <SkeletonBlock height={spacing.xxl} width="85%" style={{ marginTop: spacing.xs }} />
+      </View>)}
+    </View>
       : !data ? <InlineUnavailable actionLabel="Reintentar" message="No pudimos cargar tus vistas." onAction={() => void refresh()} />
       : views.length ? <View style={styles.grid} testID="my-views-grid">{views.map(v => <View key={v.id} style={single ? styles.single : styles.cell} testID={`my-view-cell-${v.id}`}>
         <Tile view={v} onPress={() => {
           if (isInfluenceView(v.definition)) {
-            haptics.selection(); const definition = influenceDefinitionOf(v.definition);
+            haptics.selection(); inheritPortadaRange(); const definition = influenceDefinitionOf(v.definition);
             router.push({ pathname: '/(tabs)/progress/influence/answer', params: { ...definition, lag: String(definition.lag) } });
           } else explore({ ...exploreParams(v.definition), view: v.name });
         }} />
