@@ -3,6 +3,7 @@ import { remindersPaused, type NoticePreferences } from './notice-preferences';
 import { closeDayCategory, type DayStatus } from './close-day';
 import { mealRemindersCategory } from './meal-reminders';
 import { trainingRemindersCategory, type TrainingStatus } from './training-reminders';
+import { bodyRemindersCategory } from './body-reminders';
 
 /**
  * #639 · Local reminders. This iPhone schedules them (no push on a personal signing team) and takes back any it learns is
@@ -96,4 +97,4 @@ export function createReminderSync(resolve: () => ReminderNotifications | null =
 }
 export const syncReminders = createReminderSync();
 /** Every category added so far (#639, step 6 adds them one by one). */
-export const reminderCategories: ReminderCategory[] = [closeDayCategory, mealRemindersCategory, trainingRemindersCategory];
+export const reminderCategories: ReminderCategory[] = [closeDayCategory, mealRemindersCategory, trainingRemindersCategory, bodyRemindersCategory];

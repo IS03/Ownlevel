@@ -19,8 +19,16 @@ const sectionPage = <T,>(parse: (v: unknown) => T | undefined) => (v: unknown) =
   const page = parse({ items: v.items, nextBefore: v.nextBefore });
   return page ? { today: v.today, ...page } : undefined;
 };
+type BodyListener = (overview: NonNullable<ReturnType<typeof parseBodyOverview>>) => void;
+const bodyListeners = new Set<BodyListener>();
+/** #639 · Every confirmed Cuerpo overview, as it arrives: the weigh-in and measurement reminders follow it. */
+export function observeBody(listener: BodyListener) { bodyListeners.add(listener); return () => { bodyListeners.delete(listener); }; }
 export const fetchBodyOverview = (client: MobileApiClient, signal?: AbortSignal) =>
-  client.read({ path: BASE, signal, parse: parseBodyOverview });
+  client.read({ path: BASE, signal, parse: (value: unknown) => {
+    const overview = parseBodyOverview(value);
+    if (overview) bodyListeners.forEach(listener => { try { listener(overview); } catch { /* a listener never breaks the read */ } });
+    return overview;
+  } });
 export const fetchBodyWeights = (client: MobileApiClient, before: string, signal?: AbortSignal) =>
   client.read({ path: `${BASE}/weights?before=${encodeURIComponent(before)}`, signal, parse: sectionPage(parseBodyWeightPage) });
 export const fetchBodyMeasurements = (client: MobileApiClient, before: string, signal?: AbortSignal) =>
