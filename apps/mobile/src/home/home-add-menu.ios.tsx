@@ -3,6 +3,7 @@ import { Button, Host, HStack, Menu, Spacer } from '@expo/ui/swift-ui';
 import { accessibilityLabel, buttonStyle, contentShape, frame, menuIndicator, menuStyle, shapes } from '@expo/ui/swift-ui/modifiers';
 
 import { AppText, useOwnlevelTheme, brandTokens } from '@/design-system';
+import { traceStartupNative } from '@/entry/first-data';
 import { HomeActionSurface } from './home-ui';
 
 import type { HomeAddMenuProps } from './home-add-menu.types';
@@ -20,7 +21,7 @@ export function HomeAddMenu({ onFood, onManual, onPlate, onQuick }: HomeAddMenuP
           <AppText style={[styles.text, { color: colors.primary }]}>+ Comida</AppText>
         </View>
       </HomeActionSurface>
-      <Host colorScheme={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} testID="home-add-menu">
+      <Host onLayoutContent={() => traceStartupNative('add-menu-layout')} colorScheme={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} testID="home-add-menu">
         <Menu
           label={<HStack modifiers={[frame({ maxWidth: Infinity, maxHeight: Infinity }), contentShape(shapes.rectangle())]}><Spacer minLength={0} /></HStack>}
           modifiers={[menuStyle('button'), buttonStyle('plain'), menuIndicator('hidden'), accessibilityLabel('Agregar comida')]}

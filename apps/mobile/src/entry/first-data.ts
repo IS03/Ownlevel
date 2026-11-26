@@ -1,17 +1,21 @@
-/**
- * The first useful Inicio data after a cold start (#536). With a restored session the native splash waits for it a brief,
- * bounded moment (`FIRST_DATA_HOLD_MS`) while Inicio's priority reads run behind it, so the app opens on data instead of
- * skeletons. Slow network, offline or any other route: the splash goes at the limit and each block shows its own state.
- * Presentation only: no read waits for this, and nothing here is retried or cached.
- */
-export const FIRST_DATA_HOLD_MS = 900;
+/** Cold-start timings used for local startup measurement (#536, #658). */
+export const FIRST_DATA_HOLD_MS = 2500;
 
-type Mark = 'start' | 'restored' | 'firstData' | 'splashHidden';
+type Mark = 'start' | 'restored' | 'firstData' | 'splashHidden' | 'homeRevealed';
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 let ready = false;
 let marks: Partial<Record<Mark, number>> = { start: now() };
 const listeners = new Set<() => void>();
+type HomeNativeEvent = 'page-control-layout' | 'page-control-change' | 'week-calendar-layout' | 'add-menu-layout';
+const nativeEvents = new Set<HomeNativeEvent>();
+
+/** Correlates the first native Home events with startup on a device. No account or control data. */
+export function traceStartupNative(event: HomeNativeEvent) {
+  if (!__DEV__ || process.env.NODE_ENV === 'test' || nativeEvents.has(event)) return;
+  nativeEvents.add(event);
+  console.info('[startup native]', { event, atMs: Math.round(now() - marks.start!) });
+}
 
 function mark(name: Mark) {
   if (marks[name] === undefined) marks[name] = now();
@@ -37,16 +41,20 @@ export function markRestored() { mark('restored'); }
 export function markSplashHidden() {
   if (marks.splashHidden !== undefined) return;
   mark('splashHidden');
+}
+export function markHomeRevealed() {
+  if (marks.homeRevealed !== undefined) return;
+  mark('homeRevealed');
   if (__DEV__ && process.env.NODE_ENV !== 'test') console.info('[startup]', startupTimings());
 }
 
 /**
- * Milliseconds since the JS start: session restored, first Inicio data, splash hidden (the interface responds). Measured
- * locally to compare before/after (#536); never sent anywhere.
+ * Milliseconds since JS start, including the native splash handoff and the reveal of Inicio.
+ * Local instrumentation for a before/after measurement (#536, #658).
  */
 export function startupTimings() {
   const at = (name: Mark) => marks[name] === undefined ? null : Math.round(marks[name]! - marks.start!);
-  return { restoredMs: at('restored'), firstDataMs: at('firstData'), splashHiddenMs: at('splashHidden') };
+  return { restoredMs: at('restored'), firstDataMs: at('firstData'), splashHiddenMs: at('splashHidden'), homeRevealedMs: at('homeRevealed') };
 }
 
 /** Tests only. */

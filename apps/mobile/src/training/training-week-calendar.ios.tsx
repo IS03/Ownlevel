@@ -8,6 +8,7 @@ import {
 import { isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 
 import { useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { traceStartupNative } from '@/entry/first-data';
 import { WEEKDAY_LETTERS } from '@/home/home-day';
 
 import { shiftHubMonth } from './training-hub-data';
@@ -152,6 +153,7 @@ export function TrainingWeekCalendar(props: TrainingWeekCalendarProps) {
   const onGlassGeometry = ({ height }: { height: number }) => {
     const value = Math.round(height * 2) / 2;
     if (value <= 0) return;
+    traceStartupNative('week-calendar-layout');
     const key = value > OPEN_THRESHOLD ? 'open' : 'collapsed';
     if (glass[key] === value) return;
     setGlass(current => ({ ...current, [key]: value }));

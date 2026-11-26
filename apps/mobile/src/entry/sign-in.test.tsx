@@ -9,8 +9,11 @@ import type { MobileAuthState } from '@/auth/state';
 import { authMessages } from '@/auth/errors';
 import { OwnlevelThemeProvider } from '@/design-system';
 import SignInScreen from '../../app/(auth)/sign-in';
-import { EntryTransitionProvider, useEntryMotion } from './transition';
+import { EntryTransitionProvider, useEntryMotion, useStartupHomePending } from './transition';
 import { ENTRY_BAR_BLEED, ENTRY_FADE_MS, ENTRY_SPREAD_MS, ENTRY_STAIRS_MS, ENTRY_SUCCESS_MS, entryBarFrame } from './motion-model';
+import { FIRST_DATA_HOLD_MS } from './first-data';
+import { prepareHome } from '@/home/shared-home-read';
+import type { MobileApiClient } from '@/api/client';
 import * as WebBrowser from 'expo-web-browser';
 
 let mockState: MobileAuthState;
@@ -19,6 +22,8 @@ let observedMotion: ReturnType<typeof useEntryMotion>;
 function ObserveMotion() { const motion = useEntryMotion(); useEffect(() => { observedMotion = motion; }, [motion]); return null; }
 const mockGoogle = jest.fn<() => Promise<void>>();
 const mockRetry = jest.fn<() => Promise<void>>();
+jest.mock('expo-splash-screen', () => ({ hideAsync: jest.fn(async () => undefined) }));
+jest.mock('@/home/shared-home-read', () => ({ prepareHome: jest.fn() }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ state: mockState, signInWithGoogle: mockGoogle, retry: mockRetry }) }));
 jest.mock('@/design-system/motion', () => ({
   ...jest.requireActual<typeof import('@/design-system/motion')>('@/design-system/motion'),
@@ -28,11 +33,15 @@ jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(async () => ({ type: 'dismiss' })), WebBrowserPresentationStyle: { PAGE_SHEET: 'pageSheet' } }));
 jest.mock('expo-glass-effect', () => ({ isGlassEffectAPIAvailable: () => false, isLiquidGlassAvailable: () => false }));
 
-function EntryHarness({ theme = 'light', routeReady = true }: { theme?: 'light' | 'dark'; routeReady?: boolean }) {
+function StartupHome() {
+  return useStartupHomePending() ? null : <Text>Inicio real</Text>;
+}
+const startupClient = {} as MobileApiClient;
+function EntryHarness({ theme = 'light', routeReady = true, client }: { theme?: 'light' | 'dark'; routeReady?: boolean; client?: MobileApiClient }) {
   return <SafeAreaProvider initialMetrics={{ insets: { top: 44, bottom: 34, left: 0, right: 0 }, frame: { x: 0, y: 0, width: 390, height: 844 } }}>
-    <OwnlevelThemeProvider initialMode={theme}><EntryTransitionProvider>
+    <OwnlevelThemeProvider initialMode={theme}><EntryTransitionProvider client={client}>
       <ObserveMotion />
-      {mockState.status === 'BOOTSTRAPPING' || !routeReady ? null : mockState.status === 'SIGNED_IN' ? <Text>Inicio real</Text> : <SignInScreen />}
+      {mockState.status === 'BOOTSTRAPPING' || !routeReady ? null : mockState.status === 'SIGNED_IN' ? <StartupHome /> : <SignInScreen />}
     </EntryTransitionProvider></OwnlevelThemeProvider>
   </SafeAreaProvider>;
 }
@@ -255,13 +264,35 @@ describe('EN-C entry presentation', () => {
     expect(view.queryByTestId('entry-success-transition')).toBeNull();
   });
 
-  it('never covers Home when the service restores an existing session', () => {
+  it('starts loading before Home mounts and reveals it after the priority reads settle', async () => {
+    let resolve!: (value: [void, void]) => void;
+    jest.mocked(prepareHome).mockReturnValueOnce(new Promise(done => { resolve = done; }));
     mockState = { status: 'BOOTSTRAPPING' };
-    const view = render(<EntryHarness />);
+    const view = render(<EntryHarness client={startupClient} />);
+    fireEvent(view.getByTestId('entry-bootstrap'), 'layout');
+    expect(prepareHome).not.toHaveBeenCalled();
     mockState = { status: 'SIGNED_IN', session: {} as never };
-    view.rerender(<EntryHarness />);
-    expect(view.queryByTestId('entry-success-transition')).toBeNull();
+    view.rerender(<EntryHarness client={startupClient} />);
+    expect(prepareHome).toHaveBeenCalledTimes(1);
+    expect(view.queryByText('Inicio real', { includeHiddenElements: true })).toBeNull();
+    await act(async () => resolve([undefined, undefined]));
+    expect(view.getByTestId('entry-success-transition')).toBeTruthy();
+    act(() => { jest.advanceTimersByTime(ENTRY_SUCCESS_MS); });
     expect(view.getByText('Inicio real')).toBeTruthy();
+  });
+  it('mounts Home at the deadline even when the two priority reads are still pending', () => {
+    jest.mocked(prepareHome).mockReturnValueOnce(new Promise(() => {}));
+    mockState = { status: 'BOOTSTRAPPING' };
+    const view = render(<EntryHarness client={startupClient} />);
+    fireEvent(view.getByTestId('entry-bootstrap'), 'layout');
+    mockState = { status: 'SIGNED_IN', session: {} as never };
+    view.rerender(<EntryHarness client={startupClient} />);
+    act(() => { jest.advanceTimersByTime(FIRST_DATA_HOLD_MS - ENTRY_FADE_MS - 1); });
+    expect(view.queryByText('Inicio real', { includeHiddenElements: true })).toBeNull();
+    act(() => { jest.advanceTimersByTime(1); });
+    expect(view.getByText('Inicio real', { includeHiddenElements: true })).toBeTruthy();
+    act(() => { jest.advanceTimersByTime(ENTRY_FADE_MS); });
+    expect(view.queryByTestId('entry-success-transition')).toBeNull();
   });
   it('opens the Terms and the Privacy Policy from the legal line', () => {
     const view = render(<EntryHarness />);
