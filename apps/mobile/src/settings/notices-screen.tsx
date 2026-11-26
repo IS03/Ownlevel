@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { Switch, View } from 'react-native';
 import { AppText, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { useMobileAuth } from '@/auth';
-import { remindersPaused, useNoticePreferences, type NoticePreferences } from '@/notices/notice-preferences';
+import { remindersPaused, useNoticePreferences, type NoticePreferences, type ReminderSetting } from '@/notices/notice-preferences';
+import { defaultMealReminder, MEAL_MOMENTS, mealMomentNames, mealReminderId } from '@/notices/meal-reminders';
+import { useMealMomentBands } from '@/nutrition/moment-bands-provider';
+import { DEFAULT_MEAL_MOMENT_BANDS } from '@/api/nutrition-moment-bands';
 import { reminderCategories, type ReminderCategory } from '@/notices/reminder-engine';
 import { RestAlertOption } from '@/training/session-rest-alert-option';
 import { restAlertStatus } from '@/training/session-rest-alert';
@@ -29,6 +32,30 @@ function Toggle({ title, detail, value, onChange, disabled = false }: { title: s
   </View>;
 }
 
+type Permission = 'enabled' | 'available' | 'settings' | 'unavailable' | null;
+/**
+ * One reminder: its switch and, when on, its time in half hours. Turning it on asks iOS for notifications once (the same
+ * permission as the workout alerts); denied, it says where to allow them.
+ */
+function ReminderRow({ id, title, detail, setting, onChange, writable, testID }: {
+  id: string; title: string; detail: string; setting: ReminderSetting; onChange: (setting: ReminderSetting) => void; writable: boolean; testID: string;
+}) {
+  const reduceMotion = useReduceMotion();
+  const [permission, setPermission] = useState<Permission>(null);
+  const minutes = setting.hour * 60 + setting.minute;
+  const at = (value: number) => value >= 0 && value <= 23 * 60 + 30 ? value : null;
+  return <View style={{ gap: 12 }} testID={testID}>
+    <Toggle title={title} detail={detail} value={setting.enabled} disabled={!writable} onChange={enabled => {
+      onChange({ ...setting, enabled });
+      if (enabled) void restAlertStatus(true).then(setPermission).catch(() => setPermission('unavailable'));
+    }} />
+    {setting.enabled ? <Stepper label={`Hora de ${title}`} value={minutes} valueTestID={`${id}-time`} earlier={at(minutes - 30)} later={at(minutes + 30)}
+      writable={writable} onChange={(next: number) => onChange({ ...setting, hour: Math.floor(next / 60), minute: next % 60 })} reduceMotion={reduceMotion} /> : null}
+    {setting.enabled && (permission === 'settings' || permission === 'available')
+      ? <AppText accessibilityLiveRegion="polite" muted variant="footnote">Para recibirlo, permití las notificaciones de OWNLEVEL en los Ajustes del iPhone.</AppText> : null}
+  </View>;
+}
+
 /**
  * #639 · Ajustes → Avisos y actividades en vivo. What this iPhone shows for this account: the Live Activities, the names on
  * the Lock Screen, the workout alerts and (as they are added) the reminders, with a pause.
@@ -38,17 +65,9 @@ export function NoticesSettingsScreen({ categories = reminderCategories, now = D
   const { preferences, store, persistenceFailed } = useNoticePreferences(session?.user.id);
   const paused = remindersPaused(preferences, now());
   const update = (patch: Partial<NoticePreferences>) => { void store?.update(patch); };
-  const reduceMotion = useReduceMotion();
-  const [permission, setPermission] = useState<'enabled' | 'available' | 'settings' | 'unavailable' | null>(null);
-  const closeDay = preferences.reminders[CLOSE_DAY] ?? defaultCloseDay;
-  const minutes = closeDay.hour * 60 + closeDay.minute;
-  const setCloseDay = (patch: Partial<typeof closeDay>) => { void store?.setReminder(CLOSE_DAY, { ...closeDay, ...patch }); };
-  const turnOnCloseDay = (enabled: boolean) => {
-    setCloseDay({ enabled });
-    // Turning it on asks iOS for notifications once (the same permission as the workout alerts).
-    if (enabled) void restAlertStatus(true).then(setPermission).catch(() => setPermission('unavailable'));
-  };
-  const at = (value: number) => value >= 0 && value <= 23 * 60 + 30 ? value : null;
+  // Each meal reminder starts half an hour before its moment ends, by the person's own bands (Horarios de comidas).
+  const bands = useMealMomentBands()?.bands ?? DEFAULT_MEAL_MOMENT_BANDS;
+  const set = (id: string) => (setting: ReminderSetting) => { void store?.setReminder(id, setting); };
   const pause = (value: Pause) => update({ pausedUntil: value === 'manual' ? 'manual' : now() + (value === 'week' ? 7 : 1) * 86_400_000 });
   return (
     <EditorialScreen>
@@ -71,14 +90,13 @@ export function NoticesSettingsScreen({ categories = reminderCategories, now = D
       {categories.length ? <View style={{ gap: 16 }} testID="notices-reminders">
         <AppText variant="headline" accessibilityRole="header">Recordatorios</AppText>
         <AppText muted variant="footnote">Los programa este teléfono y se cancelan cuando ya registraste. Si cargás desde la Web o ChatGPT sin abrir la app, alguno puede llegar igual.</AppText>
-        <View style={{ gap: 12 }} testID="reminder-close-day">
-          <Toggle title="Cerrar el día" detail="Un aviso a la hora que elijas, solo si falta registrar una comida o una métrica de hoy."
-            value={closeDay.enabled} onChange={turnOnCloseDay} disabled={!store} />
-          {closeDay.enabled ? <Stepper label="Hora de Cerrar el día" value={minutes} valueTestID="close-day-time" earlier={at(minutes - 30)} later={at(minutes + 30)}
-            writable={!!store} onChange={(next: number) => setCloseDay({ hour: Math.floor(next / 60), minute: next % 60 })} reduceMotion={reduceMotion} /> : null}
-          {closeDay.enabled && (permission === 'settings' || permission === 'available')
-            ? <AppText accessibilityLiveRegion="polite" muted variant="footnote">Para recibirlo, permití las notificaciones de OWNLEVEL en los Ajustes del iPhone.</AppText> : null}
-        </View>
+        <ReminderRow id={CLOSE_DAY} title="Cerrar el día" detail="Un aviso a la hora que elijas, solo si falta registrar una comida o una métrica de hoy."
+          setting={preferences.reminders[CLOSE_DAY] ?? defaultCloseDay} onChange={set(CLOSE_DAY)} writable={!!store} testID="reminder-close-day" />
+        <AppText variant="subheadline" style={{ fontWeight: '600' }}>Comidas</AppText>
+        {MEAL_MOMENTS.map(moment => <ReminderRow key={moment} id={mealReminderId(moment)} title={mealMomentNames[moment]}
+          detail={`Si a esa hora no registraste ${moment === 'breakfast' ? 'el desayuno' : moment === 'lunch' ? 'el almuerzo' : moment === 'snack' ? 'la merienda' : 'la cena'}.`}
+          setting={preferences.reminders[mealReminderId(moment)] ?? defaultMealReminder(moment, bands)} onChange={set(mealReminderId(moment))} writable={!!store}
+          testID={`reminder-${mealReminderId(moment)}`} />)}
         <Toggle title="Pausar recordatorios" detail={paused ? preferences.pausedUntil === 'manual' ? 'Pausados hasta que los reactives.' : `Pausados hasta el ${until(preferences.pausedUntil as number)}.` : 'Ninguno se programa mientras están pausados.'}
           value={paused} onChange={on => on ? pause('day') : update({ pausedUntil: null })} disabled={!store} />
         {paused ? <SettingsSegmented accessibilityLabel="Duración de la pausa" options={pauses} value={pauseOf(preferences, now())} onChange={pause} /> : null}

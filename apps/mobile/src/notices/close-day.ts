@@ -1,4 +1,5 @@
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
+import type { MealMoment } from '@/api/nutrition-moment-bands';
 import type { ReminderSetting } from './notice-preferences';
 import type { PlannedReminder, ReminderCategory } from './reminder-engine';
 
@@ -9,7 +10,8 @@ import type { PlannedReminder, ReminderCategory } from './reminder-engine';
  */
 export const CLOSE_DAY = 'close-day';
 export const defaultCloseDay: ReminderSetting = { enabled: false, hour: 21, minute: 30 };
-export type DayStatus = { date: string; closed: boolean };
+/** `moments`: the meal moments that already have a meal (#639 «Comida por horario»). */
+export type DayStatus = { date: string; closed: boolean; moments?: MealMoment[] };
 
 /** Whether today is closed, from a full reading of it; null when that reading could not tell. */
 export function closeDayStatus(response: MobileNutritionDayResponse): DayStatus | null {

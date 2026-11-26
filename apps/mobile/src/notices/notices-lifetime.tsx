@@ -6,6 +6,8 @@ import { homeDay } from '@/home/home-day';
 import { useNoticePreferences } from './notice-preferences';
 import { observeTodayNutrition } from '@/api/nutrition-day';
 import { closeDayStatus, type DayStatus } from './close-day';
+import { registeredMoments } from './meal-reminders';
+import { currentMealMomentBands } from '@/nutrition/moment-bands-store';
 import { planReminders, REMINDER_PREFIX, reminderCategories, syncReminders, type ReminderCategory } from './reminder-engine';
 
 type Response = { notification: { request: { identifier: string; content: { data?: Record<string, unknown> | null } } } };
@@ -35,7 +37,10 @@ export function NoticesLifetime({ children, categories = reminderCategories, syn
   const todayStatus = status && status.owner === owner ? status.value : null;
   useEffect(() => {
     if (!owner) return;
-    return observeTodayNutrition(response => { const value = closeDayStatus(response); if (value) setStatus({ owner, value }); });
+    return observeTodayNutrition(response => {
+      const value = closeDayStatus(response), moments = registeredMoments(response, currentMealMomentBands());
+      if (value || moments) setStatus({ owner, value: { date: response.date, closed: value?.closed ?? false, ...(moments ? { moments } : {}) } });
+    });
   }, [owner]);
   useEffect(() => {
     if (!owner || !ready) return;
