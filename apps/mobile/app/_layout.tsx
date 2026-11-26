@@ -9,7 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { MobileAuthProvider, useMobileAuth } from '@/auth';
-import { MobileApiProvider } from '@/api';
+import { MobileApiProvider, useMobileApi } from '@/api';
 import { brandTokens, createThemePreferenceStorage, OwnlevelThemeProvider, useOwnlevelTheme } from '@/design-system';
 import { NutritionStagesProvider } from '@/stages/stages-provider';
 import { MetricPresentationProvider } from '@/metrics/presentation-provider';
@@ -21,7 +21,6 @@ import { useStackScreenOptions } from '@/navigation/use-stack-screen-options';
 import { SessionPresenceProvider } from '@/training/session-presence-provider';
 import { NoticesLifetime } from '@/notices/notices-lifetime';
 import { EntryTransitionProvider } from '@/entry/transition';
-import { useNativeSplash } from '@/entry/use-native-splash';
 
 const themePreference = createThemePreferenceStorage(AsyncStorage);
 initHapticsPreference(createHapticsPreferenceStorage(AsyncStorage));
@@ -32,7 +31,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 SplashScreen.setOptions({ duration: brandTokens.motion.duration.base, fade: true });
 
 function RootNavigator() {
-  const { session, state } = useMobileAuth();
+  const { session } = useMobileAuth();
   const { colors, isDark, mode } = useOwnlevelTheme();
   const screenOptions = useStackScreenOptions();
   const navigationTheme = useMemo(
@@ -61,9 +60,6 @@ function RootNavigator() {
       // System chrome theming is best-effort on unsupported targets.
     });
   }, [colors.background]);
-
-  // Hold the native splash through restoration and, with a session, a brief bounded moment for Inicio's first data (#536).
-  useNativeSplash(state.status, Boolean(session));
 
   return (
     <NavigationThemeProvider value={navigationTheme}>
@@ -96,15 +92,18 @@ function RootNavigator() {
   );
 }
 
+function EntryNavigator() {
+  const { client } = useMobileApi();
+  return <EntryTransitionProvider client={client}><RootNavigator /></EntryTransitionProvider>;
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}><SafeAreaProvider>
       <OwnlevelThemeProvider persistence={themePreference}>
         <MobileAuthProvider>
           <MobileApiProvider>
-            <EntryTransitionProvider>
-              <RootNavigator />
-            </EntryTransitionProvider>
+            <EntryNavigator />
           </MobileApiProvider>
         </MobileAuthProvider>
       </OwnlevelThemeProvider>

@@ -4,10 +4,12 @@ import type { MobileApiClient } from '@/api/client';
 import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import { nutritionFixture } from '@/nutrition/day-fixture.test-helper';
 import { prefetchNutritionDays, useNutritionDayResource } from '@/nutrition/day-resource';
+import { prepareHome } from './shared-home-read';
 import { useHomeResources } from './home-data';
 import { useNutritionReportResource } from '@/nutrition/report-resource';
 
 let mockWarmEnabled = true;
+let mockTodayUnavailable = false;
 let mockEvents: { name: string; at: number }[] = [];
 const mockBase = Date.parse('2026-10-02T15:00:00Z');
 const mockOk = (data: unknown) => ({ status: 'ok', data, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } });
@@ -15,7 +17,9 @@ function mockRead(name: string, data: unknown) { mockEvents.push({ name, at: Dat
 jest.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]) }));
 jest.mock('@/api/home', () => ({ fetchMobileHome: () => mockRead('home', {}) }));
 jest.mock('@/api', () => ({ useApiResource: jest.requireActual<typeof import('@/api/resource')>('@/api/resource').useApiResource, fetchMobileHome: () => mockRead('home', {}) }));
-jest.mock('@/api/history', () => ({ fetchHistoryDay: () => mockRead('history-day', {}) }));
+jest.mock('@/api/history', () => ({ fetchHistoryDay: () => mockTodayUnavailable
+  ? mockRead('history-day', {}).then(() => ({ status: 'unavailable', reason: 'network', meta: { durationMs: 1000, httpStatus: null, outcome: 'unavailable' } }))
+  : mockRead('history-day', {}) }));
 jest.mock('@/api/nutrition-report', () => ({ ...jest.requireActual<typeof import('@/api/nutrition-report')>('@/api/nutrition-report'), fetchNutritionReport: () => mockRead('nutrition-report', {}) }));
 jest.mock('@/api/progress', () => ({ fetchProgressHabitWeek: () => mockRead('habits', {}), fetchProgressBody: () => mockRead('body', {}), fetchProgressTrainingRecords: () => mockRead('records', {}) }));
 jest.mock('@/api/training-history', () => ({ fetchTrainingHistory: () => mockRead('training', { sessions: [], nextCursor: null }) }));
@@ -25,7 +29,7 @@ jest.mock('@/nutrition/day-resource', () => ({
     ? jest.requireActual<typeof import('@/nutrition/day-resource')>('@/nutrition/day-resource').prefetchNutritionDays(...args) : () => {},
 }));
 const now = () => new Date(Date.now());
-beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(mockBase); mockEvents = []; mockWarmEnabled = true; });
+beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(mockBase); mockEvents = []; mockWarmEnabled = true; mockTodayUnavailable = false; });
 afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 function clientFor(fail = false) {
   const read = jest.fn<MobileApiClient['read']>(options => {
@@ -36,6 +40,20 @@ function clientFor(fail = false) {
   return { client: { read, request: jest.fn() } as unknown as MobileApiClient, read };
 }
 const advance = (ms: number) => act(async () => { await jest.advanceTimersByTimeAsync(ms); });
+it.each(['ready', 'pending', 'unavailable'] as const)('adopts the startup reads from Home when %s, without a duplicate request', async status => {
+  const { client } = clientFor();
+  mockTodayUnavailable = status === 'unavailable';
+  void prepareHome(client, '2026-10-02');
+  expect(mockEvents.map(event => event.name)).toEqual(['home', 'history-day']);
+  if (status !== 'pending') await advance(1000);
+  const home = renderHook(() => useHomeResources(client, now));
+  await advance(1000);
+  expect(home.result.current.home.state.status).toBe('ready');
+  expect(home.result.current.today.state.status).toBe(status === 'unavailable' ? 'unavailable' : 'ready');
+  expect(mockEvents.filter(event => ['home', 'history-day'].includes(event.name))).toHaveLength(2);
+  home.unmount();
+  clearConfirmedReads(client);
+});
 it('prioritizes all seven Home reads and joins yesterday when navigation meets the prefetch in flight', async () => {
   const { client, read } = clientFor(), home = renderHook(() => useHomeResources(client, now));
   expect(mockEvents).toHaveLength(7); expect(read).not.toHaveBeenCalled();

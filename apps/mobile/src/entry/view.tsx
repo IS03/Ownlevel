@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView } from 'expo-symbols';
@@ -9,14 +9,19 @@ import Animated, { FadeIn, FadeOut, ReduceMotion, useAnimatedStyle, useSharedVal
 import { AppIcon, brandTokens, GlassSurface, OwnlevelThemeProvider } from '@/design-system';
 import { EntryBars, EntryGradient, type EntryMotion } from './artwork';
 import { EntryLogo } from './logo';
+import appConfig from '../../app.json';
 import { openLegal } from '@/platform/legal';
 
 export type EntryMode = 'bootstrapping' | 'signed-out' | 'signing-in' | 'complete' | 'error';
 type EntryViewProps = {
   mode: EntryMode; motion: EntryMotion; notice?: string | null;
+  startup?: boolean;
   onGoogle?: () => void; onSoon?: () => void; onRetry?: () => void;
 };
-const { palette: { dark }, layout, radius, space, typeScale, motion: timing } = brandTokens;
+const nativeLogoWidth = appConfig.expo.plugins.flatMap(plugin =>
+  Array.isArray(plugin) && plugin[0] === 'expo-splash-screen' && typeof plugin[1] === 'object' && 'imageWidth' in plugin[1]
+    ? [plugin[1].imageWidth] : [])[0];
+const { palette: { dark, light }, layout, radius, space, typeScale, motion: timing } = brandTokens;
 
 function ProviderIcon({ name }: { name: 'apple' | 'google' | 'mail' | 'passkey' }) {
   if (name === 'google') return <Svg width={20} height={20} viewBox="0 0 24 24" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -60,9 +65,10 @@ function EntryButton({ label, icon, kind = 'text', disabled, busy, done, onPress
   </Animated.View>;
 }
 
-export function EntryView({ mode, motion, notice, onGoogle, onSoon, onRetry }: EntryViewProps) {
+export function EntryView({ mode, motion, notice, startup, onGoogle, onSoon, onRetry }: EntryViewProps) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const systemDark = useColorScheme() === 'dark';
   const busy = mode === 'signing-in' || mode === 'complete';
   const boot = mode === 'bootstrapping';
   const contentOpacity = useSharedValue(1);
@@ -73,6 +79,19 @@ export function EntryView({ mode, motion, notice, onGoogle, onSoon, onRetry }: E
   const logoWidth = Math.min(220, width * 0.56, height * 0.26);
   // Keep the composition usable in landscape, small screens and with enlarged text.
   const top = Math.max(space.xxxl, height * 0.17 - insets.top);
+  if (startup) {
+    const source = systemDark
+      ? require('../../assets/brand/splash/splash-isotipo-oscuro.png')
+      : require('../../assets/brand/splash/splash-isotipo-claro.png');
+    return <View style={[styles.screen, { backgroundColor: systemDark ? dark.bg : light.bg }]} testID="native-sign-in-screen">
+      <StatusBar style={systemDark ? 'light' : 'dark'} />
+      <EntryBars width={width} height={height} motion={motion} resting={boot} />
+      <Animated.View style={[StyleSheet.absoluteFill, styles.startupLogo, contentFade]}>
+        <Image source={source} resizeMode="contain"
+          accessibilityLabel="OWNLEVEL" style={{ width: nativeLogoWidth, height: nativeLogoWidth }} />
+      </Animated.View>
+    </View>;
+  }
   return <OwnlevelThemeProvider initialMode="dark">
     <View style={styles.screen} testID="native-sign-in-screen">
       <StatusBar style="light" />
@@ -109,6 +128,7 @@ export function EntryView({ mode, motion, notice, onGoogle, onSoon, onRetry }: E
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: dark.bg, overflow: 'hidden' },
+  startupLogo: { justifyContent: 'center', alignItems: 'center' },
   content: { paddingHorizontal: space.xl, alignItems: 'center' },
   composition: { width: '100%', alignItems: 'center' },
   logo: { alignItems: 'center' },

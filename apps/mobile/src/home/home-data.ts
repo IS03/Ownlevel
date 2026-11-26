@@ -4,14 +4,13 @@ import { useFocusEffect } from 'expo-router';
 import { useApiResource } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { READ_FAMILY_DOMAINS, settledWritesFor, type WriteDomain } from '@/api/confirmed-read-cache';
-import { fetchHistoryDay } from '@/api/history';
 import { useNutritionReportResource } from '@/nutrition/report-resource';
 import { fetchProgressHabitWeek, fetchProgressBody, fetchProgressTrainingRecords } from '@/api/progress';
 import type { MobileApiReadResult } from '@/api/results';
 import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/training-history';
 
 import { homeDay } from './home-day';
-import { useSharedHomeRead } from './shared-home-read';
+import { useSharedHomeRead, useSharedTodayRead } from './shared-home-read';
 import { prefetchNutritionDays } from '@/nutrition/day-resource';
 import { shiftNutritionDate } from '@/nutrition/day-format';
 
@@ -113,9 +112,9 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
   const warmOnFocus = useRef<() => void>(() => {});
   const foreground = useCallback(() => visible.current, []);
   // /home is the retained reading shared with Entrenar (#303 C2): a fresh one confirmed there answers here.
-  const home = useSharedHomeRead(client, useCallback(() => homeDay(now()).today, [now]), foreground);
-  const today = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? fetchHistoryDay(client, homeDay(now()).today, signal) : Promise.resolve(unavailable), [client, now]), { refreshOnForeground: foreground });
+  const currentDay = useCallback(() => homeDay(now()).today, [now]);
+  const home = useSharedHomeRead(client, currentDay, foreground);
+  const today = useSharedTodayRead(client, currentDay, foreground);
   const reportDay = homeDay(now());
   const calories = useNutritionReportResource(client, { period: 'custom', from: reportDay.weekStart, to: reportDay.today });
   const habits = useApiResource(useCallback((signal: AbortSignal) =>
