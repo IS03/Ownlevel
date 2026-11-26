@@ -7,6 +7,7 @@ import { defaultMealReminder, MEAL_MOMENTS, mealMomentNames, mealReminderId } fr
 import { useMealMomentBands } from '@/nutrition/moment-bands-provider';
 import { defaultTrainingDays, defaultTrainingReturn, TRAINING_DAYS, TRAINING_RETURN } from '@/notices/training-reminders';
 import { BODY_MEASURES, BODY_WEIGHT, defaultBodyMeasures, defaultBodyWeight } from '@/notices/body-reminders';
+import { defaultWeekly, WEEKLY } from '@/notices/weekly-reminder';
 import { DEFAULT_MEAL_MOMENT_BANDS } from '@/api/nutrition-moment-bands';
 import { reminderCategories, type ReminderCategory } from '@/notices/reminder-engine';
 import { RestAlertOption } from '@/training/session-rest-alert-option';
@@ -151,6 +152,14 @@ export function NoticesSettingsScreen({ categories = reminderCategories, now = D
             <SettingsSegmented accessibilityLabel="Frecuencia de medidas" options={EVERY} value={every} onChange={value => set(BODY_MEASURES)({ ...measures, afterDays: Number(value) })} />
             {preferences.facts?.lastMeasurementOn === undefined
               ? <AppText muted variant="footnote">Empieza cuando abras Cuerpo en Progreso y la app vea tus últimas medidas.</AppText> : null}
+          </ReminderRow>;
+        })()}
+        <AppText variant="subheadline" style={{ fontWeight: '600' }}>Progreso</AppText>
+        {(() => {
+          const weekly = preferences.reminders[WEEKLY] ?? defaultWeekly;
+          return <ReminderRow id={WEEKLY} title="Resumen semanal" detail="Un aviso para mirar tu semana en Progreso, el día que elijas."
+            setting={weekly} onChange={set(WEEKLY)} writable={!!store} testID="reminder-weekly">
+            <Weekdays label="Día del resumen" chosen={weekly.days ?? []} multiple={false} disabled={!store} onChange={days => set(WEEKLY)({ ...weekly, days })} />
           </ReminderRow>;
         })()}
         <Toggle title="Pausar recordatorios" detail={paused ? preferences.pausedUntil === 'manual' ? 'Pausados hasta que los reactives.' : `Pausados hasta el ${until(preferences.pausedUntil as number)}.` : 'Ninguno se programa mientras están pausados.'}
