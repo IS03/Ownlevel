@@ -1,9 +1,11 @@
 import { useRouter } from 'expo-router';
-import { useEffect, type PropsWithChildren } from 'react';
+import { useEffect, useState, type PropsWithChildren } from 'react';
 import { AppState, Platform } from 'react-native';
 import { useMobileAuth } from '@/auth';
 import { homeDay } from '@/home/home-day';
 import { useNoticePreferences } from './notice-preferences';
+import { observeTodayNutrition } from '@/api/nutrition-day';
+import { closeDayStatus, type DayStatus } from './close-day';
 import { planReminders, REMINDER_PREFIX, reminderCategories, syncReminders, type ReminderCategory } from './reminder-engine';
 
 type Response = { notification: { request: { identifier: string; content: { data?: Record<string, unknown> | null } } } };
@@ -28,13 +30,20 @@ export function NoticesLifetime({ children, categories = reminderCategories, syn
   const owner = session?.user.id ?? null;
   const { preferences, ready } = useNoticePreferences(owner);
   const router = useRouter();
+  // Today's day as the last confirmed reading saw it (also right after a save: the day is read again), per account.
+  const [status, setStatus] = useState<{ owner: string; value: DayStatus } | null>(null);
+  const todayStatus = status && status.owner === owner ? status.value : null;
+  useEffect(() => {
+    if (!owner) return;
+    return observeTodayNutrition(response => { const value = closeDayStatus(response); if (value) setStatus({ owner, value }); });
+  }, [owner]);
   useEffect(() => {
     if (!owner || !ready) return;
-    const apply = () => { void sync(planReminders(categories, { preferences, now: Date.now(), today: homeDay().today })); };
+    const apply = () => { void sync(planReminders(categories, { preferences, now: Date.now(), today: homeDay().today, todayStatus })); };
     apply();
     const subscription = AppState.addEventListener('change', state => { if (state === 'active') apply(); });
     return () => subscription.remove();
-  }, [categories, owner, preferences, ready, sync]);
+  }, [categories, owner, preferences, ready, sync, todayStatus]);
   // No account, no reminders: what the previous one scheduled never reaches the next.
   useEffect(() => () => { void sync([]); }, [owner, sync]);
   useEffect(() => {

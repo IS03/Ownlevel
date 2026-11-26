@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { remindersPaused, type NoticePreferences } from './notice-preferences';
+import { closeDayCategory } from './close-day';
 
 /**
  * #639 · Local reminders. This iPhone schedules them (no push on a personal signing team) and takes back any it learns is
@@ -21,7 +22,8 @@ export type PlannedReminder = {
   /** Where tapping it opens (an app path, e.g. «/nutrition»). */
   path: string;
 };
-export type ReminderContext = { preferences: NoticePreferences; now: number; today: string };
+/** `todayStatus`: today's day closed or not, from the last confirmed reading of it (null: not known). */
+export type ReminderContext = { preferences: NoticePreferences; now: number; today: string; todayStatus?: { date: string; closed: boolean } | null };
 export type ReminderCategory = { id: string; plan: (context: ReminderContext) => PlannedReminder[] };
 
 /** The reminders to have scheduled now: the categories' plans, within the horizon, unpaused, soonest first. */
@@ -92,4 +94,4 @@ export function createReminderSync(resolve: () => ReminderNotifications | null =
 }
 export const syncReminders = createReminderSync();
 /** Every category added so far (#639, step 6 adds them one by one). */
-export const reminderCategories: ReminderCategory[] = [];
+export const reminderCategories: ReminderCategory[] = [closeDayCategory];
