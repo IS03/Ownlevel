@@ -59,7 +59,7 @@ describe('«Comida por horario» (#639)', () => {
     expect(ids(['breakfast'])[0]).toBe('meal.lunch.2026-11-25');
     const first = planReminders([mealRemindersCategory], { preferences, now: NOW, today: TODAY })[0];
     expect(first).toEqual({ id: 'meal.lunch.2026-11-25', at: Date.parse('2026-11-25T18:30:00Z'), title: '¿Registraste el almuerzo?', path: '/nutrition' });
-    expect(reminderCategories.map(category => category.id)).toEqual(['close-day', 'meal', 'training', 'body', 'weekly']);
+    expect(reminderCategories.map(category => category.id)).toEqual(['close-day', 'meal', 'training', 'body', 'weekly', 'muscles']);
   });
 });
 

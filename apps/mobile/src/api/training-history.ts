@@ -210,8 +210,16 @@ export function parseTrainingHistoryMonth(value: unknown, requested?: string): T
 export function fetchTrainingHistoryMonth(client: MobileApiClient, month: string, signal?: AbortSignal): Promise<MobileApiReadResult<TrainingHistoryMonth>> {
   return client.read({ path: `${BASE}/history/days?month=${encodeURIComponent(month)}`, signal, parse: value => parseTrainingHistoryMonth(value, month) });
 }
+type ExercisesListener = (exercises: TrainingHistoryExercise[]) => void;
+const exercisesListeners = new Set<ExercisesListener>();
+/** #639 · Every confirmed reading of the recorded exercises: the muscle group reminders follow it. */
+export function observeHistoryExercises(listener: ExercisesListener) { exercisesListeners.add(listener); return () => { exercisesListeners.delete(listener); }; }
 export function fetchTrainingHistoryExercises(client: MobileApiClient, signal?: AbortSignal): Promise<MobileApiReadResult<TrainingHistoryExercise[]>> {
-  return client.read({ path: `${BASE}/history/exercises`, signal, parse: parseTrainingHistoryExercises });
+  return client.read({ path: `${BASE}/history/exercises`, signal, parse: (value: unknown) => {
+    const exercises = parseTrainingHistoryExercises(value);
+    if (exercises) exercisesListeners.forEach(listener => { try { listener(exercises); } catch { /* a listener never breaks the read */ } });
+    return exercises;
+  } });
 }
 export function fetchTrainingExerciseHistory(client: MobileApiClient, exerciseId: string, limit: number,
   signal?: AbortSignal, routineId?: string | null): Promise<MobileApiReadResult<TrainingExerciseHistory>> {
