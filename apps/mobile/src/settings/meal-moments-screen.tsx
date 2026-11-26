@@ -101,11 +101,12 @@ export function MealMomentsScreen() {
   </EditorialScreen>;
 }
 
-function Stepper({ label, value, valueTestID, prefix, earlier, later, writable, onChange, reduceMotion }: {
-  label: string; value: number; valueTestID?: string; prefix?: string; earlier: MealMomentBands | null; later: MealMomentBands | null;
-  writable: boolean; onChange: (next: MealMomentBands) => void; reduceMotion: boolean;
+/** A clock moved in half hours (also reused by Ajustes → Avisos for a reminder's time). */
+export function Stepper<T>({ label, value, valueTestID, prefix, earlier, later, writable, onChange, reduceMotion }: {
+  label: string; value: number; valueTestID?: string; prefix?: string; earlier: T | null; later: T | null;
+  writable: boolean; onChange: (next: T) => void; reduceMotion: boolean;
 }) {
-  const move = (next: MealMomentBands | null) => { if (next && writable) { triggerHaptic('stepperChange'); onChange(next); } };
+  const move = (next: T | null) => { if (next && writable) { triggerHaptic('stepperChange'); onChange(next); } };
   return <View style={styles.stepper} accessible accessibilityRole="adjustable" accessibilityLabel={label} accessibilityValue={{ text: spokenClock(value) }}
     accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
     onAccessibilityAction={event => { const next = event.nativeEvent.actionName === 'increment' ? later : earlier; if (next && writable) onChange(next); }}>
