@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 import type { MobileApiClient } from '@/api/client';
 import { useCachedRead } from '@/api/use-cached-read';
-import { fetchMobileNutritionDay, isNutritionDate } from '@/api/nutrition-day';
-import { confirmedReads, scopedReadKey } from '@/api/confirmed-read-cache';
-import { nutritionToday } from './day-format';
+import { fetchMobileNutritionDay, fetchMobileNutritionWeek, isNutritionDate, notifyTodayNutrition } from '@/api/nutrition-day';
+import { confirmedReads, READ_FAMILY_DOMAINS, scopedReadKey } from '@/api/confirmed-read-cache';
+import { nutritionWeek } from './day-home-model';
+import { nutritionToday, shiftNutritionDate } from './day-format';
 
 /**
  * One retained reading per account and date, shared by the day screen and the meal projection. A day already
@@ -23,4 +24,39 @@ export function prefetchNutritionDays(client: MobileApiClient | null, dates: rea
   const entries = [...new Set(dates)].filter((date): date is string => !!date && isNutritionDate(date) && date <= limit).slice(0, 2)
     .map(date => cache.get('nutrition-day', scopedReadKey(date, scope), (signal, background) => fetchMobileNutritionDay(client, date, signal, background)));
   return cache.prefetch(entries);
+}
+
+const weekUnsupported = new WeakSet<MobileApiClient>();
+
+/** Exactly the seven dates the Nutrition strip represents, with future days left to individual reads. */
+export function prefetchNutritionWeek(client: MobileApiClient, date: string, today = nutritionToday(), fromHome = false) {
+  const scope = nutritionToday(), limit = today < scope ? today : scope;
+  const fallback = () => prefetchNutritionDays(client, fromHome
+    ? [date, shiftNutritionDate(date, -1)]
+    : [shiftNutritionDate(date, -1), shiftNutritionDate(date, 1)], limit);
+  if (weekUnsupported.has(client)) return fallback();
+  const dates = nutritionWeek(date, today).filter(candidate => isNutritionDate(candidate) && candidate <= limit);
+  if (!dates.length) return () => {};
+
+  const cache = confirmedReads(client);
+  const entry = cache.get('nutrition-week', scopedReadKey(`${dates[0]}|${dates.at(-1)}`, scope), async signal => {
+    const revision = cache.writeRevision(READ_FAMILY_DOMAINS['nutrition-day']);
+    const result = await fetchMobileNutritionWeek(client, dates, signal);
+    if (!signal.aborted && result.status === 'ok' && scope === nutritionToday()) {
+      for (const day of result.data) {
+        const target = cache.get('nutrition-day', scopedReadKey(day.date, scope), (readSignal, background) => fetchMobileNutritionDay(client, day.date, readSignal, background));
+        if (cache.seedNutritionDay(target, { ...result, data: day }, revision)) notifyTodayNutrition(day);
+      }
+    }
+    return result;
+  });
+  let stopFallback: (() => void) | undefined;
+  const unsubscribe = entry.resource.subscribe(() => {
+    const state = entry.resource.getSnapshot();
+    if (state.status !== 'unavailable' || state.result.meta.httpStatus !== 404 || stopFallback) return;
+    weekUnsupported.add(client);
+    stopFallback = fallback();
+  });
+  const stop = cache.prefetch([entry]);
+  return () => { stop(); unsubscribe(); stopFallback?.(); };
 }

@@ -1,9 +1,10 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { afterEach, beforeEach, expect, it, jest } from '@jest/globals';
 import type { MobileApiClient } from '@/api/client';
-import { clearConfirmedReads } from '@/api/confirmed-read-cache';
+import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { nutritionFixture } from '@/nutrition/day-fixture.test-helper';
-import { prefetchNutritionDays, useNutritionDayResource } from '@/nutrition/day-resource';
+import { nutritionWeek } from '@/nutrition/day-home-model';
+import { prefetchNutritionDays, prefetchNutritionWeek, useNutritionDayResource } from '@/nutrition/day-resource';
 import { prepareHome } from './shared-home-read';
 import { useHomeResources } from './home-data';
 import { useNutritionReportResource } from '@/nutrition/report-resource';
@@ -25,17 +26,31 @@ jest.mock('@/api/progress', () => ({ fetchProgressHabitWeek: () => mockRead('hab
 jest.mock('@/api/training-history', () => ({ fetchTrainingHistory: () => mockRead('training', { sessions: [], nextCursor: null }) }));
 jest.mock('@/nutrition/day-resource', () => ({
   ...jest.requireActual<typeof import('@/nutrition/day-resource')>('@/nutrition/day-resource'),
-  prefetchNutritionDays: (...args: Parameters<typeof import('@/nutrition/day-resource')['prefetchNutritionDays']>) => mockWarmEnabled
-    ? jest.requireActual<typeof import('@/nutrition/day-resource')>('@/nutrition/day-resource').prefetchNutritionDays(...args) : () => {},
+  prefetchNutritionWeek: (...args: Parameters<typeof import('@/nutrition/day-resource')['prefetchNutritionWeek']>) => mockWarmEnabled
+    ? jest.requireActual<typeof import('@/nutrition/day-resource')>('@/nutrition/day-resource').prefetchNutritionWeek(...args) : () => {},
 }));
 const now = () => new Date(Date.now());
 beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(mockBase); mockEvents = []; mockWarmEnabled = true; mockTodayUnavailable = false; });
 afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
-function clientFor(fail = false) {
+const today = '2026-10-02';
+const days = nutritionWeek(today);
+function clientFor(mode: 'ok' | 'legacy' | 'unavailable' | 'malformed' = 'ok') {
   const read = jest.fn<MobileApiClient['read']>(options => {
+    const range = options.path.includes('/days?');
     const date = options.path.split('/').at(-1)!;
-    mockEvents.push({ name: `day:${date}`, at: Date.now() - mockBase });
-    return new Promise(resolve => setTimeout(() => resolve((fail ? { status: 'unavailable', reason: 'network', meta: { durationMs: 3000, httpStatus: null, outcome: 'unavailable' } } : mockOk(nutritionFixture(date))) as never), 3000));
+    mockEvents.push({ name: range ? 'week' : `day:${date}`, at: Date.now() - mockBase });
+    let data: unknown;
+    if (range) {
+      expect(options.background).toBe(true);
+      expect(options.path).toBe('/api/mobile/v1/nutrition/days?from=2026-09-26&to=2026-10-02');
+      const fixtures = days.map(nutritionFixture);
+      if (mode === 'malformed') fixtures.reverse();
+      data = options.parse({ from: days[0], to: today, days: fixtures });
+    } else data = nutritionFixture(date);
+    const failure = (range && mode === 'legacy' && 404) || ((mode === 'unavailable' || !data) && 503);
+    const result = failure ? { status: 'unavailable', reason: 'server', meta: { durationMs: 3000, httpStatus: failure, outcome: 'unavailable' } }
+      : mockOk(data);
+    return new Promise(resolve => setTimeout(() => resolve(result as never), 3000));
   });
   return { client: { read, request: jest.fn() } as unknown as MobileApiClient, read };
 }
@@ -54,50 +69,82 @@ it.each(['ready', 'pending', 'unavailable'] as const)('adopts the startup reads 
   home.unmount();
   clearConfirmedReads(client);
 });
-it('prioritizes all seven Home reads and joins yesterday when navigation meets the prefetch in flight', async () => {
+it('warms the whole visible week in one call after all seven Home reads settle', async () => {
   const { client, read } = clientFor(), home = renderHook(() => useHomeResources(client, now));
   expect(mockEvents).toHaveLength(7); expect(read).not.toHaveBeenCalled();
-  await advance(1000); expect(read).toHaveBeenCalledTimes(1); expect(home.result.current.home.state.status).toBe('ready');
-  await advance(3500); expect(read).toHaveBeenCalledTimes(2);
-  home.unmount(); const yesterday = renderHook(() => useNutritionDayResource(client, '2026-10-01'));
-  await advance(2500); expect(yesterday.result.current.state.status).toBe('ready'); expect(read).toHaveBeenCalledTimes(2);
-  await advance(60_000); expect(read).toHaveBeenCalledTimes(2); // No polling/recursive dates.
-  yesterday.unmount(); clearConfirmedReads(client);
-});
-it('measures the same Home → today → yesterday fixture with and without speculative warming', async () => {
-  const results = [];
-  for (const warm of [false, true]) {
-    mockWarmEnabled = warm; jest.setSystemTime(mockBase); mockEvents = [];
-    const { client, read } = clientFor(), home = renderHook(() => useHomeResources(client, now));
-    await advance(1000); await advance(3000); await advance(3000); const beforeNavigation = [...mockEvents]; home.unmount();
-    const day = renderHook(({ date }: { date: string }) => useNutritionDayResource(client, date), { initialProps: { date: '2026-10-02' } });
-    const todayImmediate = day.result.current.state.status; await advance(3000);
-    const beforeYesterday = read.mock.calls.length; day.rerender({ date: '2026-10-01' });
-    const yesterdayImmediate = day.result.current.state.status; await advance(3000);
-    const measurement = { warm, homeRequests: beforeNavigation.filter(e => !e.name.startsWith('day:')).length,
-      fullDaysPrepared: beforeNavigation.filter(e => e.name.startsWith('day:')), todayImmediate, yesterdayImmediate,
-      todayContentMs: todayImmediate === 'ready' ? 0 : 3000, yesterdayContentMs: yesterdayImmediate === 'ready' ? 0 : 3000,
-      requestsOnYesterday: read.mock.calls.length - beforeYesterday, totalRequests: mockEvents.length };
-    results.push(measurement); expect(day.result.current.state.status).toBe('ready'); day.unmount(); clearConfirmedReads(client); jest.clearAllTimers();
+  await advance(999); expect(read).not.toHaveBeenCalled();
+  await advance(1); expect(read).toHaveBeenCalledTimes(1);
+  await advance(3000);
+  const day = renderHook(({ date }: { date: string }) => useNutritionDayResource(client, date), { initialProps: { date: days[0] } });
+  for (const date of days) {
+    day.rerender({ date });
+    const state = day.result.current.state;
+    expect(state.status).toBe('ready');
+    if (state.status === 'ready') expect(state.current.data.date).toBe(date);
   }
-  expect(results.map(r => r.totalRequests)).toEqual([9, 9]); expect(results.map(r => r.requestsOnYesterday)).toEqual([1, 0]);
-  expect(results.map(r => r.yesterdayContentMs)).toEqual([3000, 0]); expect(results[1].fullDaysPrepared.map(e => e.at)).toEqual([1000, 4000]);
-  console.info('[OWNLEVEL prefetch fixture]', JSON.stringify(results));
+  const stopAgain = prefetchNutritionWeek(client, today);
+  await advance(15_000);
+  expect(read).toHaveBeenCalledTimes(1);
+  stopAgain(); day.unmount(); home.unmount(); clearConfirmedReads(client);
 });
-it('keeps speculative failures out of Home state and does not retry them in a loop', async () => {
-  const { client, read } = clientFor(true), home = renderHook(() => useHomeResources(client, now));
-  await advance(1000); await advance(6000); await advance(60_000); expect(read).toHaveBeenCalledTimes(2); expect(home.result.current.home.state.status).toBe('ready');
-  const opened = renderHook(() => useNutritionDayResource(client, '2026-10-01'));
-  await advance(3000); expect(opened.result.current.state.status).toBe('unavailable');
-  expect(read).toHaveBeenCalledTimes(3); opened.unmount(); home.unmount(); clearConfirmedReads(client);
+it('restores the two serial neighbour reads on an old deployment (404)', async () => {
+  const { client, read } = clientFor('legacy'), home = renderHook(() => useHomeResources(client, now));
+  await advance(1000); await advance(3000); await advance(3000); await advance(3000);
+  expect(mockEvents.slice(-3)).toEqual([
+    { name: 'week', at: 1000 }, { name: 'day:2026-10-02', at: 4000 }, { name: 'day:2026-10-01', at: 7000 },
+  ]);
+  const yesterday = renderHook(() => useNutritionDayResource(client, '2026-10-01'));
+  expect(yesterday.result.current.state.status).toBe('ready');
+  expect(read).toHaveBeenCalledTimes(3);
+  yesterday.unmount(); home.unmount(); clearConfirmedReads(client);
 });
-it('shares Home’s weekly report with Nutrition and bounds adjacent day requests without a cascade', async () => {
+it.each(['unavailable', 'malformed'] as const)('a %s speculative response cannot seed a day or retry in a loop', async mode => {
+  const { client, read } = clientFor(mode), home = renderHook(() => useHomeResources(client, now));
+  await advance(15_000); expect(read).toHaveBeenCalledTimes(1); expect(home.result.current.home.state.status).toBe('ready');
+  const day = renderHook(() => useNutritionDayResource(client, days[0]));
+  expect(day.result.current.state.status).toBe('loading');
+  await advance(3000);
+  expect(day.result.current.state.status).toBe(mode === 'unavailable' ? 'unavailable' : 'ready');
+  expect(read).toHaveBeenCalledTimes(2);
+  day.unmount(); home.unmount(); clearConfirmedReads(client);
+});
+it.each([false, true])('invalidates confirmed days and rejects a week overtaken by a write (%s)', async duringRead => {
+  const { client, read } = clientFor();
+  const stop = prefetchNutritionWeek(client, today);
+  await advance(duringRead ? 500 : 3000);
+  invalidateConfirmedReads(client, '/api/mobile/v1/nutrition/days/2026-10-02/metrics');
+  await advance(3000);
+  const day = renderHook(() => useNutritionDayResource(client, today));
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(mockEvents.at(-1)?.name).toBe('day:2026-10-02');
+  await advance(3000);
+  expect(day.result.current.state.status).toBe('ready');
+  day.unmount(); stop(); clearConfirmedReads(client);
+});
+it('gives the visible day priority over a running batch and keeps cached results per account', async () => {
+  const { client, read } = clientFor();
+  const stop = prefetchNutritionWeek(client, today);
+  await advance(500);
+  const day = renderHook(() => useNutritionDayResource(client, days[0]));
+  expect(read.mock.calls[0][0].signal?.aborted).toBe(true);
+  expect(read.mock.calls[1][0].background).toBeUndefined();
+  await advance(3000);
+  expect(day.result.current.state.status).toBe('ready');
+  day.unmount(); stop();
+  const other = clientFor();
+  const next = renderHook(() => useNutritionDayResource(other.client, days[0]));
+  expect(next.result.current.state.status).toBe('loading');
+  expect(other.read).toHaveBeenCalledTimes(1);
+  await advance(3000);
+  expect(next.result.current.state.status).toBe('ready');
+  next.unmount(); clearConfirmedReads(client); clearConfirmedReads(other.client);
+});
+it('still shares Home’s report when consumers ask for its same range and rejects invalid adjacent days', async () => {
   const { client, read } = clientFor(), home = renderHook(() => useHomeResources(client, now));
-  await advance(1000); await advance(3000); await advance(3000); home.unmount();
-  const week = renderHook(() => useNutritionReportResource(client, { period: 'custom', from: '2026-09-28', to: '2026-10-02' }));
-  expect(week.result.current.state.status).toBe('ready'); expect(mockEvents.filter(e => e.name === 'nutrition-report')).toHaveLength(1);
-  prefetchNutritionDays(client, ['2026-10-03', 'invalid'], '2026-10-02'); await advance(0); expect(read).toHaveBeenCalledTimes(2);
-  prefetchNutritionDays(client, ['2026-09-30', '2026-10-01'], '2026-10-02'); await advance(3000); await advance(60_000);
-  expect(read).toHaveBeenCalledTimes(3); expect(mockEvents.filter(e => e.name === 'day:2026-09-29')).toHaveLength(0);
+  await advance(4000); home.unmount();
+  const week = renderHook(() => useNutritionReportResource(client, { period: 'custom', from: '2026-09-28', to: today }));
+  expect(week.result.current.state.status).toBe('ready');
+  expect(mockEvents.filter(event => event.name === 'nutrition-report')).toHaveLength(1);
+  prefetchNutritionDays(client, ['2026-10-03', 'invalid'], today); await advance(0); expect(read).toHaveBeenCalledTimes(1);
   week.unmount(); clearConfirmedReads(client);
 });
