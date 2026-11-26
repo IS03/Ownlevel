@@ -132,13 +132,22 @@ export function parseMobileTrainingResponse(value: unknown): MobileTrainingRespo
   return { activeSession, calendar };
 }
 
+type TrainingListener = (data: MobileTrainingResponse, month: string) => void;
+const trainingListeners = new Set<TrainingListener>();
+/** #639 · Every confirmed Entrenar reading (active session and month calendar), as it arrives: the training reminders follow it. */
+export function observeTraining(listener: TrainingListener) { trainingListeners.add(listener); return () => { trainingListeners.delete(listener); }; }
+
 export function fetchMobileTraining(
   client: MobileApiClient,
   month: string,
   signal?: AbortSignal,
 ): Promise<MobileApiReadResult<MobileTrainingResponse>> {
   return client.read({
-    parse: parseMobileTrainingResponse,
+    parse: value => {
+      const data = parseMobileTrainingResponse(value);
+      if (data) trainingListeners.forEach(listener => { try { listener(data, month); } catch { /* a listener never breaks the read */ } });
+      return data;
+    },
     path: `${MOBILE_TRAINING_API_PATH}?month=${encodeURIComponent(month)}`,
     signal,
   });
