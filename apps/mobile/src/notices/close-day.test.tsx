@@ -65,6 +65,8 @@ describe('today is read again after a save: the reminder follows (#639)', () => 
     stop(); expect(seen).toEqual([TODAY]);
   });
   it('the lifetime drops today\'s reminder when a reading says the day is closed', async () => {
+    // Noon in Córdoba: today's 21:30 is still ahead, whatever the clock running the tests says.
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(NOW);
     await noticePreferences('owner').update(enabled());
     const sync = jest.fn(async (_plan: readonly PlannedReminder[]) => undefined);
     render(<NoticesLifetime sync={sync} />);
@@ -72,6 +74,7 @@ describe('today is read again after a save: the reminder follows (#639)', () => 
     const client = { read: async ({ parse }: { parse: (value: unknown) => unknown }) => ({ status: 'ok', data: parse(JSON.parse(JSON.stringify(day()))) }) } as unknown as MobileApiClient;
     await act(async () => { await fetchMobileNutritionDay(client, TODAY); });
     await waitFor(() => expect(sync.mock.calls.at(-1)?.[0].map(item => item.id)).not.toContain('close-day.2026-11-25'));
+    clock.mockRestore();
   });
 });
 

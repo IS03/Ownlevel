@@ -11,7 +11,8 @@ import { writeAccountRecord } from '@/platform/account-local-data';
  * - `pausedUntil`: reminders paused until that moment (epoch ms); `'manual'` until they are turned back on.
  * - `reminders`: each category's own settings, added one by one (#639, step 6).
  */
-export type ReminderSetting = { enabled: boolean; hour: number; minute: number; days?: number[] };
+/** `days`: weekdays (0 Sunday … 6 Saturday) a reminder runs on; `afterDays`: days without the thing before it reminds. */
+export type ReminderSetting = { enabled: boolean; hour: number; minute: number; days?: number[]; afterDays?: number };
 export type NoticePreferences = {
   workoutActivity: boolean; mealActivity: boolean; lockDetail: boolean;
   pausedUntil: number | 'manual' | null;
@@ -23,11 +24,12 @@ const bool = (value: unknown, fallback: boolean) => typeof value === 'boolean' ?
 function reminder(value: unknown): ReminderSetting | null {
   if (!value || typeof value !== 'object') return null;
   const v = value as Record<string, unknown>;
-  const hour = v.hour, minute = v.minute, days = v.days;
+  const hour = v.hour, minute = v.minute, days = v.days, after = v.afterDays;
   if (typeof v.enabled !== 'boolean' || !Number.isInteger(hour) || (hour as number) < 0 || (hour as number) > 23
     || !Number.isInteger(minute) || (minute as number) < 0 || (minute as number) > 59) return null;
   const validDays = Array.isArray(days) ? days.filter(day => Number.isInteger(day) && day >= 0 && day <= 6) as number[] : undefined;
-  return { enabled: v.enabled, hour: hour as number, minute: minute as number, ...(validDays ? { days: [...new Set(validDays)].sort() } : {}) };
+  const afterDays = Number.isInteger(after) && (after as number) >= 1 && (after as number) <= 30 ? after as number : undefined;
+  return { enabled: v.enabled, hour: hour as number, minute: minute as number, ...(validDays ? { days: [...new Set(validDays)].sort() } : {}), ...(afterDays ? { afterDays } : {}) };
 }
 export function parseNoticePreferences(value: unknown): NoticePreferences {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultNoticePreferences;

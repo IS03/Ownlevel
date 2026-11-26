@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Switch, View } from 'react-native';
-import { AppText, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppText, Chip, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { useMobileAuth } from '@/auth';
 import { remindersPaused, useNoticePreferences, type NoticePreferences, type ReminderSetting } from '@/notices/notice-preferences';
 import { defaultMealReminder, MEAL_MOMENTS, mealMomentNames, mealReminderId } from '@/notices/meal-reminders';
 import { useMealMomentBands } from '@/nutrition/moment-bands-provider';
+import { defaultTrainingDays, defaultTrainingReturn, TRAINING_DAYS, TRAINING_RETURN } from '@/notices/training-reminders';
 import { DEFAULT_MEAL_MOMENT_BANDS } from '@/api/nutrition-moment-bands';
 import { reminderCategories, type ReminderCategory } from '@/notices/reminder-engine';
 import { RestAlertOption } from '@/training/session-rest-alert-option';
@@ -37,8 +38,9 @@ type Permission = 'enabled' | 'available' | 'settings' | 'unavailable' | null;
  * One reminder: its switch and, when on, its time in half hours. Turning it on asks iOS for notifications once (the same
  * permission as the workout alerts); denied, it says where to allow them.
  */
-function ReminderRow({ id, title, detail, setting, onChange, writable, testID }: {
+function ReminderRow({ id, title, detail, setting, onChange, writable, testID, children }: {
   id: string; title: string; detail: string; setting: ReminderSetting; onChange: (setting: ReminderSetting) => void; writable: boolean; testID: string;
+  /** What else it needs once on (the weekdays, the days without training). */ children?: ReactNode;
 }) {
   const reduceMotion = useReduceMotion();
   const [permission, setPermission] = useState<Permission>(null);
@@ -51,10 +53,16 @@ function ReminderRow({ id, title, detail, setting, onChange, writable, testID }:
     }} />
     {setting.enabled ? <Stepper label={`Hora de ${title}`} value={minutes} valueTestID={`${id}-time`} earlier={at(minutes - 30)} later={at(minutes + 30)}
       writable={writable} onChange={(next: number) => onChange({ ...setting, hour: Math.floor(next / 60), minute: next % 60 })} reduceMotion={reduceMotion} /> : null}
+    {setting.enabled ? children : null}
     {setting.enabled && (permission === 'settings' || permission === 'available')
       ? <AppText accessibilityLiveRegion="polite" muted variant="footnote">Para recibirlo, permití las notificaciones de OWNLEVEL en los Ajustes del iPhone.</AppText> : null}
   </View>;
 }
+
+type ReturnDays = '3' | '4' | '5' | '7';
+const RETURN_DAYS: { value: ReturnDays; label: string }[] = [{ value: '3', label: '3 días' }, { value: '4', label: '4 días' }, { value: '5', label: '5 días' }, { value: '7', label: '7 días' }];
+const WEEKDAYS: { day: number; short: string; name: string }[] = [{ day: 1, short: 'L', name: 'lunes' }, { day: 2, short: 'M', name: 'martes' },
+  { day: 3, short: 'X', name: 'miércoles' }, { day: 4, short: 'J', name: 'jueves' }, { day: 5, short: 'V', name: 'viernes' }, { day: 6, short: 'S', name: 'sábado' }, { day: 0, short: 'D', name: 'domingo' }];
 
 /**
  * #639 · Ajustes → Avisos y actividades en vivo. What this iPhone shows for this account: the Live Activities, the names on
@@ -97,6 +105,25 @@ export function NoticesSettingsScreen({ categories = reminderCategories, now = D
           detail={`Si a esa hora no registraste ${moment === 'breakfast' ? 'el desayuno' : moment === 'lunch' ? 'el almuerzo' : moment === 'snack' ? 'la merienda' : 'la cena'}.`}
           setting={preferences.reminders[mealReminderId(moment)] ?? defaultMealReminder(moment, bands)} onChange={set(mealReminderId(moment))} writable={!!store}
           testID={`reminder-${mealReminderId(moment)}`} />)}
+        <AppText variant="subheadline" style={{ fontWeight: '600' }}>Entreno</AppText>
+        {(() => {
+          const days = preferences.reminders[TRAINING_DAYS] ?? defaultTrainingDays, chosen = days.days ?? [];
+          return <ReminderRow id={TRAINING_DAYS} title="Días de entreno" detail="Los días que elijas, si todavía no entrenaste ese día."
+            setting={days} onChange={set(TRAINING_DAYS)} writable={!!store} testID="reminder-training-days">
+            <View accessibilityLabel="Días de la semana" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {WEEKDAYS.map(({ day, short, name }) => <Chip key={day} kind="toggle" label={short} accessibilityLabel={name} selected={chosen.includes(day)} disabled={!store}
+                onPress={() => set(TRAINING_DAYS)({ ...days, days: chosen.includes(day) ? chosen.filter(item => item !== day) : [...chosen, day].sort() })} />)}
+            </View>
+          </ReminderRow>;
+        })()}
+        {(() => {
+          const back = preferences.reminders[TRAINING_RETURN] ?? defaultTrainingReturn, after = back.afterDays ?? 4;
+          return <ReminderRow id={TRAINING_RETURN} title="Retomar el entreno" detail={`Si pasan ${after} días sin entrenar.`}
+            setting={back} onChange={set(TRAINING_RETURN)} writable={!!store} testID="reminder-training-return">
+            <SettingsSegmented accessibilityLabel="Días sin entrenar" options={RETURN_DAYS} value={String(after) as ReturnDays}
+              onChange={value => set(TRAINING_RETURN)({ ...back, afterDays: Number(value) })} />
+          </ReminderRow>;
+        })()}
         <Toggle title="Pausar recordatorios" detail={paused ? preferences.pausedUntil === 'manual' ? 'Pausados hasta que los reactives.' : `Pausados hasta el ${until(preferences.pausedUntil as number)}.` : 'Ninguno se programa mientras están pausados.'}
           value={paused} onChange={on => on ? pause('day') : update({ pausedUntil: null })} disabled={!store} />
         {paused ? <SettingsSegmented accessibilityLabel="Duración de la pausa" options={pauses} value={pauseOf(preferences, now())} onChange={pause} /> : null}

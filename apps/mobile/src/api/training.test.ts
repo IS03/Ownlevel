@@ -92,10 +92,13 @@ describe('Mobile Training API contract', () => {
     await fetchMobileTraining(client, '2026-09', signal);
 
     expect(read).toHaveBeenCalledWith({
-      parse: parseMobileTrainingResponse,
+      parse: expect.any(Function),
       path: '/api/mobile/v1/training?month=2026-09',
       signal,
     });
+    // The parse is the contract's own, also telling the reminders (#639) what it read.
+    const { parse } = (read.mock.calls[0] as unknown as [{ parse: (value: unknown) => unknown }])[0];
+    expect(parse({ nope: true })).toBe(parseMobileTrainingResponse({ nope: true }));
   });
 });
 
