@@ -45,6 +45,7 @@ function Preview({ kind, spark, mode, selectedKey, onSelect, value, range }: {
   kind: SparkKind; spark: ProgressSpark | null | undefined; mode: 'bars' | 'dots'; range: DateRange;
   selectedKey: string | null; onSelect: (key: string | null) => void; value: number | null;
 }) {
+  const reduced = useReduceMotion();
   const points = spark ? sparkPoints(spark, SPARK_UNIT[kind]) : [];
   const selected = points.find(p => p.key === selectedKey);
   const detail = kind === 'training' ? 'Series registradas' : kind === 'weight' ? 'Peso registrado · último por intervalo' : 'Promedio por día utilizado';
@@ -56,11 +57,12 @@ function Preview({ kind, spark, mode, selectedKey, onSelect, value, range }: {
     <ChartReadout reading={reading(selected)} candidates={[reading(), ...points.map(p => reading(p))]} testID={`panorama-reading-${kind}`}
       accessibilityLabel={selected ? selected.text : `${reading().value}, ${detail}, período completo`}
       clearPresentation="inline" onClear={selected ? () => onSelect(null) : undefined} />
-    {points.some(p => p.value !== null) ? <FittedChart testID={`panorama-chart-${kind}`} label={`Resumen de ${kind === 'training' ? 'Entrenamiento' : kind === 'weight' ? 'Peso' : 'Nutrición'}`}
-      range={range} showScale={false} maxBarWidth={brandTokens.space.xxxl} unit={SPARK_UNIT[kind]} mode={mode}
+    {points.some(p => p.value !== null) ? <Animated.View key={kind} entering={reduced ? undefined : FadeIn.duration(brandTokens.motion.duration.fast)}>
+      <FittedChart testID={`panorama-chart-${kind}`} label={`Resumen de ${kind === 'training' ? 'Entrenamiento' : kind === 'weight' ? 'Peso' : 'Nutrición'}`}
+      range={range} showScale={false} showExtrema={mode === 'dots'} highlightLast={mode === 'dots'} connect={mode === 'dots'} animateBars={false} maxBarWidth={brandTokens.space.xxxl} unit={SPARK_UNIT[kind]} mode={mode}
       points={points.map(p => ({ ...p, kind: p.value === null ? 'gap' : p.value === 0 ? 'zero' : 'mark' }))}
       selectedKey={selected?.key ?? null} onSelect={key => onSelect(selected?.key === key ? null : key)} />
-      : <AppText muted variant="footnote">No hay puntos disponibles en esta lectura.</AppText>}
+      </Animated.View> : <AppText muted variant="footnote">No hay puntos disponibles en esta lectura.</AppText>}
   </View>;
 }
 

@@ -8,30 +8,32 @@ type BarProps = {
   height: number; zero?: boolean; negative?: boolean; soft?: boolean; color?: string; style?: StyleProp<ViewStyle>; testID?: string;
   /** Decorative miniatures keep the same shape without an SVG/animation per tiny mark. */
   compact?: boolean;
+  animate?: boolean;
+  zeroColor?: string;
 };
 /** Exact baseline, modest rounding, no outline or glass. Missing observations never create this mark. */
-export function ChartBar({ height, zero = false, negative = false, soft = false, color, style, testID, compact = false }: BarProps) {
+export function ChartBar({ height, zero = false, negative = false, soft = false, color, style, testID, compact = false, animate = true, zeroColor }: BarProps) {
   const { colors } = useOwnlevelTheme();
   const curve = zero ? 0 : Math.min(spacing.xs, height / 2);
   const ink = color ?? colors.primary;
   const shape: ViewStyle = { width: '100%', overflow: 'hidden', opacity: soft ? 0.4 : 1,
     borderTopLeftRadius: negative ? 0 : curve, borderTopRightRadius: negative ? 0 : curve,
     borderBottomLeftRadius: negative ? curve : 0, borderBottomRightRadius: negative ? curve : 0,
-    backgroundColor: zero ? colors.border : compact ? ink : 'transparent' };
+    backgroundColor: zero ? (zeroColor ?? colors.border) : compact ? ink : 'transparent' };
   return compact ? <View testID={testID} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[shape, style, { height }]} />
-    : <AnimatedBar height={height} zero={zero} ink={ink} shape={shape} style={style} testID={testID} />;
+    : <AnimatedBar animate={animate} height={height} zero={zero} ink={ink} shape={shape} style={style} testID={testID} />;
 }
-function AnimatedBar({ height, zero, ink, shape, style, testID }: {
-  height: number; zero: boolean; ink: string; shape: ViewStyle; style?: StyleProp<ViewStyle>; testID?: string;
+function AnimatedBar({ animate, height, zero, ink, shape, style, testID }: {
+  animate: boolean; height: number; zero: boolean; ink: string; shape: ViewStyle; style?: StyleProp<ViewStyle>; testID?: string;
 }) {
   const reduced = useReduceMotion();
   const id = `bar${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const previous = useRef(height), shown = useSharedValue(height), alpha = useSharedValue(1);
   useEffect(() => {
-    shown.value = reduced ? height : withTiming(height, { duration: motionDurations.base });
-    if (reduced && previous.current !== height) { alpha.value = 0; alpha.value = withTiming(1, { duration: motionDurations.fast }); }
+    shown.value = reduced || !animate ? height : withTiming(height, { duration: motionDurations.base });
+    if (animate && reduced && previous.current !== height) { alpha.value = 0; alpha.value = withTiming(1, { duration: motionDurations.fast }); }
     previous.current = height;
-  }, [alpha, height, reduced, shown]);
+  }, [alpha, animate, height, reduced, shown]);
   const animated = useAnimatedStyle(() => ({ height: shown.value }));
   const fade = useAnimatedStyle(() => ({ opacity: alpha.value }));
   return <Animated.View testID={testID} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[shape, style, animated]}>

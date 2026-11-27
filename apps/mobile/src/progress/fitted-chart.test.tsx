@@ -1,5 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { expect, it, jest } from '@jest/globals';
+import * as Native from 'react-native';
 import { StyleSheet } from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { FittedChart, type FittedPoint } from './fitted-chart';
@@ -37,4 +38,43 @@ it('keeps wider summary bars fully inside both ends of the plot', () => {
     expect(mark.left).toBeGreaterThanOrEqual(0);
     expect(Number(mark.left) + Number(mark.width)).toBeLessThanOrEqual(300);
   }
+});
+
+it('anchors positive bars and zero at the same baseline, and grows negative bars down from it', () => {
+  const [first, second, negative, zero, gap] = ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05'];
+  const tree = (values: number[]) => <OwnlevelThemeProvider initialMode="dark">
+    <FittedChart points={[point(first, values[0]), point(second, values[1]), point(negative, -17), point(zero, 0), point(gap, null)]}
+      range={{ start: first, end: gap }} mode="bars" selectedKey={null} onSelect={jest.fn()} testID="anchored" />
+  </OwnlevelThemeProvider>;
+  const view = render(tree([20, 40]));
+  for (const values of [[20, 40], [700, 5], [8, 40]]) {
+    view.rerender(tree(values));
+    const baseline = view.getByTestId('anchored-baseline', { includeHiddenElements: true }).props.y1;
+    const height = StyleSheet.flatten(view.getByTestId('anchored-plot').props.style).height;
+    const ink = (date: string) => StyleSheet.flatten(view.getByTestId(`anchored-bar-ink-${date}`, { includeHiddenElements: true }).props.style);
+    expect(ink(first).bottom).toBeCloseTo(height - baseline);
+    expect(ink(second).bottom).toBeCloseTo(height - baseline);
+    expect(ink(first).top).toBeUndefined();
+    expect(ink(negative).top).toBeCloseTo(baseline);
+    expect(ink(negative).bottom).toBeUndefined();
+    expect(ink(zero).height).toBe(1);
+    expect(ink(zero).bottom).toBeCloseTo(height - baseline);
+    expect(view.queryByTestId(`anchored-bar-ink-${gap}`, { includeHiddenElements: true })).toBeNull();
+  }
+});
+
+it('shows weight scale references and highlights the last recorded dot, while a gap breaks its line', () => {
+  const dimensions = jest.spyOn(jest.requireActual<typeof Native>('react-native'), 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+  const points = [point('2026-11-01', 60), point('2026-11-02', 62), point('2026-11-03', null), point('2026-11-05', 61), point('2026-11-06', null)];
+  const view = render(<OwnlevelThemeProvider>
+    <FittedChart points={points} range={{ start: '2026-11-01', end: '2026-11-06' }} mode="dots" unit="kg" connect showScale={false} showExtrema highlightLast
+      selectedKey={null} onSelect={jest.fn()} testID="trend" />
+  </OwnlevelThemeProvider>);
+  const hidden = { includeHiddenElements: true };
+  expect(view.getByTestId('trend-line-2026-11-02', hidden)).toBeTruthy();
+  expect(view.queryByTestId('trend-line-2026-11-05', hidden)).toBeNull();
+  expect(view.getByText('60 kg')).toBeTruthy();
+  expect(view.getByText('62 kg')).toBeTruthy();
+  expect(view.getByTestId('trend-2026-11-05-mark').findAllByProps({ testID: 'trend-last' })).not.toHaveLength(0);
+  dimensions.mockRestore();
 });
