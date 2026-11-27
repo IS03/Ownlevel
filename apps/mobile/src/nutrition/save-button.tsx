@@ -10,8 +10,8 @@ const HEIGHT = brandTokens.layout.buttonHeight;
  * Primary save button that shows the save happening: it narrows into a circle with the native spinner while the
  * request runs, then turns into a check. Visual only: the controller still owns the write and its recovery.
  */
-export function SaveButton({ label, state, disabled, onPress, testID }: {
-  label: string; state: SaveButtonState; disabled?: boolean; onPress: () => void; testID?: string;
+export function SaveButton({ label, state, disabled, onPress, testID, capsule = false, numeric = false }: {
+  label: string; state: SaveButtonState; disabled?: boolean; onPress: () => void; testID?: string; capsule?: boolean; numeric?: boolean;
 }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const [width, setWidth] = useState(0);
@@ -22,10 +22,10 @@ export function SaveButton({ label, state, disabled, onPress, testID }: {
   }, [reduced, shrink, state]);
   const pill = useAnimatedStyle(() => width > 0 ? {
     width: width - (width - HEIGHT) * shrink.value,
-    borderRadius: brandTokens.radius.button + (HEIGHT / 2 - brandTokens.radius.button) * shrink.value,
+    borderRadius: capsule ? brandTokens.radius.full : brandTokens.radius.button + (HEIGHT / 2 - brandTokens.radius.button) * shrink.value,
   } : {});
   if (state === 'idle') return <View onLayout={event => setWidth(event.nativeEvent.layout.width)}>
-    <Button label={label} disabled={disabled} onPress={onPress} testID={testID} />
+    <Button capsule={capsule} numeric={numeric} label={label} disabled={disabled} onPress={onPress} testID={testID} />
   </View>;
   return <View style={styles.row} onLayout={event => { if (!width) setWidth(event.nativeEvent.layout.width); }}>
     <Animated.View accessible accessibilityRole="button" accessibilityLabel={state === 'saving' ? 'Guardando' : 'Guardado'}

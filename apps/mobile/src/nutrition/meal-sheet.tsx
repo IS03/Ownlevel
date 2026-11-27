@@ -1,5 +1,6 @@
-import { useMemo, useState, type PropsWithChildren, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, type LayoutChangeEvent, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useState, type PropsWithChildren, type ReactNode } from 'react';
+import { Keyboard, KeyboardAvoidingView, Modal, type LayoutChangeEvent, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { AppText, ScreenGlow, ScrollScreen, SearchField, SheetHandle, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -28,14 +29,14 @@ export function SheetHeader({ title, subtitle, left, right }: { title: string; s
  * Full-height sheet for the loading flows. Swiping down closes it natively when nothing would be lost (`dismissable`);
  * with unsaved changes iOS resists and the close confirmation asks. A swipe from the left edge goes back (or closes).
  */
-export function MealSheet({ title, subtitle, children, onClose, onDismiss, back, right, running, embedded, dismissable = false, list, listHidden = false, testID }: PropsWithChildren<{
+export function MealSheet({ title, subtitle, children, onClose, onDismiss, back, right, running, embedded, dismissable = false, list, listHidden = false, reviewFooter, testID }: PropsWithChildren<{
   title: string; subtitle?: string; onClose: () => void; back?: boolean; right?: ReactNode; running?: boolean; embedded?: boolean;
   /**
    * #479: a virtualized list that owns the vertical scroll (never nested in a ScrollView). The header stays fixed above it.
    * While `listHidden` (reviewing one of its rows), the list stays mounted, so its scroll position, query and letter survive,
    * and `children` scroll in the usual screen.
    */
-  list?: ReactNode; listHidden?: boolean;
+  list?: ReactNode; listHidden?: boolean; reviewFooter?: ReactNode;
   /** Nothing to lose: a swipe down dismisses at once (no resistance bounce). */
   dismissable?: boolean;
   /** What a swipe down (or Android back) does when it differs from the header button (which may go back). */
@@ -66,12 +67,33 @@ export function MealSheet({ title, subtitle, children, onClose, onDismiss, back,
         <ScreenGlow />
         <View style={styles.fixed}>{header}</View>
         <View style={[styles.fill, listHidden && styles.hidden]} accessibilityElementsHidden={listHidden} importantForAccessibility={listHidden ? 'no-hide-descendants' : 'auto'}>{list}</View>
-        {listHidden ? <ScrollScreen glow={false} safeAreaEdges={['left', 'right', 'bottom']} contentContainerStyle={styles.content}>{children}</ScrollScreen> : null}
+        {listHidden ? reviewFooter ? <MealReview footer={reviewFooter}>{children}</MealReview>
+          : <ScrollScreen glow={false} safeAreaEdges={['left', 'right', 'bottom']} contentContainerStyle={styles.content}>{children}</ScrollScreen> : null}
       </View>}
     </KeyboardAvoidingView>
   </Animated.View></GestureDetector></GestureHandlerRootView>;
   return embedded ? body : <Modal visible animationType={reduced ? 'fade' : 'slide'} presentationStyle="pageSheet" onRequestClose={onDismiss ?? onClose}
     allowSwipeDismissal={dismissable && !running}>{body}</Modal>;
+}
+function MealReview({ footer, children }: PropsWithChildren<{ footer: ReactNode }>) {
+  const { bottom } = useSafeAreaInsets();
+  const [keyboardOpen, setKeyboardOpen] = useState(() => Keyboard.isVisible());
+  const [footerHeight, setFooterHeight] = useState<number>(brandTokens.layout.buttonHeight);
+  useEffect(() => {
+    const shown = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardOpen(true));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
+    return () => { shown.remove(); hidden.remove(); };
+  }, []);
+  const inset = Math.max(bottom, brandTokens.space.sm);
+  return <View style={styles.fill}>
+    <ScrollScreen glow={false} safeAreaEdges={['left', 'right', 'bottom']} testID="meal-review-scroll" contentContainerStyle={[
+      styles.content, !keyboardOpen && { paddingBottom: footerHeight + inset + brandTokens.space.sm },
+    ]}>
+      {children}
+    </ScrollScreen>
+    {!keyboardOpen ? <View testID="meal-review-footer" pointerEvents="box-none" style={[styles.reviewFooter, { bottom: inset }]}
+      onLayout={event => setFooterHeight(event.nativeEvent.layout.height)}>{footer}</View> : null}
+  </View>;
 }
 export function MealSearch({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
   return <SearchField label={label} value={value} onChange={onChange} />;
@@ -82,4 +104,5 @@ export const mealSheetStyles = StyleSheet.create({
   input: { minHeight: 48, padding: 12, borderRadius: 12, fontSize: brandTokens.typeScale.body.fontSize }, number: { fontSize: brandTokens.typeScale.heroNumber.fontSize, lineHeight: 68, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 40, marginRight: 6 },
 });
 const styles = StyleSheet.create({ fill: { flex: 1 }, hidden: { display: 'none' }, fixed: { gap: 20, paddingTop: 8, paddingBottom: 12, paddingHorizontal: brandTokens.layout.screenPadding },
+  reviewFooter: { position: 'absolute', left: brandTokens.layout.screenPadding, right: brandTokens.layout.screenPadding },
   content: { flexGrow: 1, gap: 20, paddingTop: 8 }, header: { flexDirection: 'row', alignItems: 'center', gap: 8 }, title: { flex: 1, gap: 2 }, sideZone: { flexShrink: 0 }, center: { textAlign: 'center' } });

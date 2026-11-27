@@ -245,6 +245,7 @@ type ButtonProps = {
   label: string;
   /** Tabular figures when the label includes a count. */
   numeric?: boolean;
+  capsule?: boolean;
   /** Shows progress and blocks presses (the action is in flight). */
   loading?: boolean;
   onPress: () => void;
@@ -264,6 +265,7 @@ export function Button({
   icon,
   label,
   numeric = false,
+  capsule = false,
   loading = false,
   onPress,
   testID,
@@ -290,6 +292,7 @@ export function Button({
       testID={testID}
       style={({ pressed }) => [
         styles.button,
+        capsule && { borderRadius: radius.full },
         variant === 'quiet' && styles.buttonQuiet,
         { backgroundColor: tone.background, borderColor: tone.border },
         blocked && styles.disabled,
