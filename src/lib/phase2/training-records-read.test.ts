@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 import { loadTrainingRecordsData, trainingRecordsSource, type TrainingRecordsRead } from "./training-robust";
 
 const MIGRATION = "supabase/migrations/20261030235611_training_records_read_expand.sql";
-const MIGRATION_V3 = "supabase/migrations/20261127091316_training_records_work_sets_expand.sql";
+const MIGRATION_V3 = "supabase/migrations/20261127091954_training_records_work_sets_expand.sql";
 const MIGRATION_V2 = "supabase/migrations/20261110222214_training_records_read_v2_expand.sql";
 const read: TrainingRecordsRead = {
   sessions: [{ id: "s1", day_log_id: "d1", status: "completed", started_at: "2026-09-10T10:00:00Z", ended_at: "2026-09-10T11:00:00Z",

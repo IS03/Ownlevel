@@ -24,15 +24,15 @@ function dataset() {
       const exId = uuid(3, i * 2 + e);
       tables.workout_session_exercises.push({ id: exId, user_id: USER, workout_session_id: sessionId, exercise_id: uuid(9, e), nombre_snapshot: `Ejercicio ${e}`,
         grupo_muscular_snapshot: "pecho", muscle_group_label_snapshot: null, weight_mode_snapshot: "Peso total", is_completed: true });
-      for (let k = 0; k < 3; k += 1) tables.workout_sets.push({ id: uuid(4, (i * 2 + e) * 3 + k), user_id: USER, workout_session_exercise_id: exId, is_completed: true, actual_reps: 8, actual_weight_kg: 50 + e });
+      for (let k = 0; k < 3; k += 1) tables.workout_sets.push({ id: uuid(4, (i * 2 + e) * 3 + k), user_id: USER, workout_session_exercise_id: exId, is_completed: true, set_kind: "work", actual_reps: 8, actual_weight_kg: 50 + e });
     }
   }
   // Noise: another user, a discarded session and incomplete sets are never counted.
   tables.workout_sessions.push({ id: uuid(5, 1), user_id: USER, day_log_id: tables.day_logs[0].id, status: "discarded", started_at: null, ended_at: null });
   tables.workout_session_exercises.push({ id: uuid(5, 2), user_id: USER, workout_session_id: uuid(5, 1), exercise_id: uuid(9, 0), is_completed: true });
-  tables.workout_sets.push({ id: uuid(5, 3), user_id: USER, workout_session_exercise_id: uuid(5, 2), is_completed: true, actual_reps: 99, actual_weight_kg: 999 });
-  tables.workout_sets.push({ id: uuid(5, 4), user_id: "stranger", workout_session_exercise_id: uuid(3, 0), is_completed: true, actual_reps: 1, actual_weight_kg: 1 });
-  tables.workout_sets.push({ id: uuid(5, 5), user_id: USER, workout_session_exercise_id: uuid(3, 0), is_completed: false, actual_reps: 1, actual_weight_kg: 1 });
+  tables.workout_sets.push({ id: uuid(5, 3), user_id: USER, workout_session_exercise_id: uuid(5, 2), is_completed: true, set_kind: "work", actual_reps: 99, actual_weight_kg: 999 });
+  tables.workout_sets.push({ id: uuid(5, 4), user_id: "stranger", workout_session_exercise_id: uuid(3, 0), is_completed: true, set_kind: "work", actual_reps: 1, actual_weight_kg: 1 });
+  tables.workout_sets.push({ id: uuid(5, 5), user_id: USER, workout_session_exercise_id: uuid(3, 0), is_completed: false, set_kind: "work", actual_reps: 1, actual_weight_kg: 1 });
   return tables;
 }
 
@@ -94,6 +94,17 @@ describe("Training loader reads every completed set (no PostgREST truncation, no
     expect(fake.queries.filter(q => q.table === "workout_session_exercise_configurations").map(q => q.returned)).toEqual([0]);
     expect(fake.queries.filter(q => q.table !== "workout_session_exercise_configurations").every(q => q.returned > 0)).toBe(true);
     expect(data.configurations).toEqual(new Map());
+  });
+  it("excludes work-ineligible rows while keeping the same read available to the pre-session time boundary", async () => {
+    const tables = dataset();
+    tables.workout_sets.push({ ...tables.workout_sets[0], id: uuid(5, 6), set_kind: "warmup", actual_reps: 42 });
+    const fake = fakeSupabase(tables, 1000);
+    const auth = { supabase: fake.client as never, userId: USER };
+    const work = await loadCompletedTrainingData(auth);
+    const timed = await loadCompletedTrainingData(auth, { includeWarmups: true });
+    expect(work.sets.some(set => set.set_kind === "warmup")).toBe(false);
+    expect(timed.sets.filter(set => set.set_kind === "warmup")).toMatchObject([{ actual_reps: 42 }]);
+    expect(timed.sets.filter(set => set.set_kind !== "warmup")).toEqual(work.sets);
   });
   it("current + previous period analytics use every set", async () => {
     const fake = fakeSupabase(dataset(), 1000);
