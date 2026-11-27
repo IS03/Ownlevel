@@ -18,6 +18,8 @@ jest.mock('./home-page-control', () => jest.requireActual('./home-page-control.t
 const mockNavigate = jest.fn();
 const mockPush = jest.fn();
 const mockFocusEffects: (() => void)[] = [];
+// The portada's separate background report is covered in home-prefetch and panorama-screen.
+jest.mock('@/progress/panorama-resource', () => ({ prefetchPanorama: () => () => {} }));
 const mockApiClient = {};
 const mockFetchHome = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchDay = jest.fn<(client: unknown, date: string) => Promise<unknown>>();
