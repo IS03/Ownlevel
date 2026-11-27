@@ -89,6 +89,25 @@ describe('Home weekly habits', () => {
     expect(wrong.queryByTestId('home-habits-empty')).toBeNull();
   });
 
+  it('removes the mask gradient at the end, restores it on scroll back and hides the indicator', () => {
+    const view = habits();
+    const scroll = view.getByTestId('home-habits-scroll');
+    const hidden = { includeHiddenElements: true };
+    expect(view.getByTestId('home-habits-mask')).toBeTruthy();
+    expect(scroll.props.showsVerticalScrollIndicator).toBe(false);
+    expect(view.queryByTestId('home-habits-mask-opaque', hidden)).toBeNull();
+    const move = (y: number) => fireEvent.scroll(scroll, {
+      nativeEvent: { contentOffset: { y }, contentSize: { height: 300 }, layoutMeasurement: { height: 180 } },
+    });
+    move(120);
+    expect(view.getByTestId('home-habits-mask-opaque', hidden)).toBeTruthy();
+    move(18);
+    expect(view.queryByTestId('home-habits-mask-opaque', hidden)).toBeNull();
+    const short = habits(ready({ ...base, items: items.slice(0, 3) }));
+    expect(short.queryByTestId('home-habits-mask')).toBeNull();
+    expect(short.queryByTestId('home-habits-scroll')).toBeNull();
+  });
+
   it('large type shows fewer rows at once and scrolls to the rest, all of them reachable', () => {
     mockFontScale = 2;
     const view = habits();
