@@ -99,3 +99,35 @@ it('choosing the previous month keeps its elapsed calendar span, and remove comp
   fireEvent.press(view.getByTestId('compare-apply')); fireEvent(view.UNSAFE_getByType(Modal), 'dismiss');
   expect(observed.state.unit).toBe('month'); expect(observed.state.compare).toEqual({kind: 'previous'});
 });
+
+it('keeps six weeks and one notice through a draft, another month and quick picks', () => {
+  const view = wrap();
+  expect(view.getByRole('button', { name: 'Ver comparación' }).props.testID).toBe('compare-apply');
+  expect(view.getByTestId('compare-notice').props.children).toContain('Distinta duración');
+  fireEvent.press(view.getByTestId('compare-cell-b'));
+  const weeks = () => view.getAllByTestId(/^range-calendar-week-/).length;
+  expect(weeks()).toBe(6);
+  fireEvent.press(view.getByRole('button', { name: 'Mes anterior' }));
+  expect(view.getByText('Julio 2026')).toBeTruthy();
+  expect(weeks()).toBe(6);
+  fireEvent.press(view.getByRole('button', { name: '10 de julio' }));
+  expect(view.getByText('—')).toBeTruthy();
+  expect(view.getByTestId('compare-notice').props.children).toBe('Ahora elegí el último día.');
+  expect(view.getByTestId('compare-apply')).toBeDisabled();
+  fireEvent.press(view.getByRole('button', { name: 'Año pasado' }));
+  expect(weeks()).toBe(6);
+  expect(view.getAllByTestId('compare-notice')).toHaveLength(1);
+  expect(view.getByTestId('compare-apply')).not.toBeDisabled();
+});
+
+it('shows overlap ahead of duration and removing the comparison preserves A', () => {
+  const overlap: ProgressRangeState = { ...state, compare: { kind: 'custom', range: { start: '2026-10-04', end: '2026-10-12' } } };
+  const view = wrap(overlap);
+  expect(view.getByTestId('compare-notice').props.children).toBe('Los períodos se superponen.');
+  expect(view.queryByText(/^Distinta duración/)).toBeNull();
+  fireEvent.press(view.getByRole('button', { name: 'Sin comparar' }));
+  expect(observed.compare).not.toBeNull();
+  fireEvent(view.UNSAFE_getByType(Modal), 'dismiss');
+  expect(observed.compare).toBeNull();
+  expect(observed.query).toEqual({ period: 'custom', from: '2026-10-01', to: TODAY });
+});

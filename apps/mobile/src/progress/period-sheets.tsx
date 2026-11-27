@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, SlideInDown, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppSheet, AppText, Button, GlassSurface, SheetHandle, useAppSheetDismiss, spacing, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppSheet, AppText, LinkRow, GlassSurface, SheetHandle, useAppSheetDismiss, spacing, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { RangeCalendar, type CalendarMark } from './range-calendar';
@@ -15,6 +15,21 @@ const pick = (draft: Draft | null, day: string): Draft => !draft || draft.end ? 
   : day < draft.start ? { start: day, end: draft.start } : { start: draft.start, end: day };
 const complete = (d: Draft | null): DateRange | null => d?.end ? { start: d.start, end: d.end } : null;
 
+function PeriodSheetHeader({ title, subtitle, valid, onClose, onDone, confirmLabel = 'Listo', confirmTestID }: {
+  title: string; subtitle?: string; valid: boolean; onClose: () => void; onDone: () => void;
+  confirmLabel?: string; confirmTestID?: string;
+}) {
+  const { colors } = useOwnlevelTheme();
+  return <View style={styles.header}>
+    <RoutineSheetButton label="Cerrar sin cambiar" icon="close" onPress={onClose} />
+    <View style={styles.title}>
+      <AppText accessibilityRole="header" variant="headline" style={styles.center}>{title}</AppText>
+      {subtitle ? <AppText numeric variant="caption" style={[styles.center, { color: valid ? colors.primary : colors.textMuted }]}>{subtitle}</AppText> : null}
+    </View>
+    <RoutineSheetButton testID={confirmTestID} label={confirmLabel} icon="check" accent disabled={!valid} onPress={onDone} />
+  </View>;
+}
+
 function Sheet({ title, subtitle, valid, onClose, onDone, children }: {
   title: string; subtitle: string; valid: boolean; onClose: () => void; onDone: () => void; children: ReactNode;
 }) {
@@ -26,12 +41,7 @@ function Sheet({ title, subtitle, valid, onClose, onDone, children }: {
         style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 16) }]}>
         <SheetHandle />
         <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
-          <View style={styles.header}>
-            <RoutineSheetButton label="Cerrar sin cambiar" icon="close" onPress={onClose} />
-            <View style={styles.title}><AppText accessibilityRole="header" variant="headline">{title}</AppText>
-              <AppText numeric variant="caption" style={{ color: valid ? colors.primary : colors.textMuted, textAlign: 'center' }}>{subtitle}</AppText></View>
-            <RoutineSheetButton label="Listo" icon="check" accent disabled={!valid} onPress={onDone} />
-          </View>
+          <PeriodSheetHeader title={title} subtitle={subtitle} valid={valid} onClose={onClose} onDone={onDone} />
           {children}
         </ScrollView>
       </Animated.View>
@@ -95,7 +105,7 @@ export function CompareSheet({ onClose, proposal = null, onApplied }: {
 
 function CompareEditor({ proposal, onApplied }: { proposal: DateRange | null; onApplied?: () => void }) {
   const { state: active, setState, today } = useProgressRange();
-  const dismiss = useAppSheetDismiss(), reduced = useReduceMotion(), insets = useSafeAreaInsets();
+  const dismiss = useAppSheetDismiss(), reduced = useReduceMotion();
   const { fontScale } = useWindowDimensions();
   const [state] = useState(() => (proposal && progressStateForRange(proposal.start, proposal.end, active, today)) || active);
   const a = progressRange(state, today);
@@ -112,7 +122,8 @@ function CompareEditor({ proposal, onApplied }: { proposal: DateRange | null; on
   const quick = (k: 'previous' | 'last_year') => {
     if (!rangeA) return;
     const next = compareRange({ ...baseFor(rangeA), compare: { kind: k } }, today)!;
-    setKind(k); setDraftB(next); setMonth(next.end); setEditing(null);
+    setKind(k); setDraftB(next); setMonth(next.end);
+    if (editing) setEditing('b');
   };
   const day = (d: string) => {
     if (editing === 'a') {
@@ -133,10 +144,18 @@ function CompareEditor({ proposal, onApplied }: { proposal: DateRange | null; on
   const length = (r: DateRange | null) => r ? `${daysBetween(r.start, r.end)} ${daysBetween(r.start, r.end) === 1 ? 'día' : 'días'}` : null;
   const selectedDraft = editing === 'a' ? draftA : draftB;
   const marks: CalendarMark[] = editing ? [{ range: selectedDraft, tone: editing }] : [];
+  const invalid = (rangeA && !fits(rangeA)) || (rangeB && !fits(rangeB));
+  const overlaps = rangeA && rangeB && rangeA.start <= rangeB.end && rangeB.start <= rangeA.end;
+  const differentLength = rangeA && rangeB && daysBetween(rangeA.start, rangeA.end) !== daysBetween(rangeB.start, rangeB.end);
+  const invalidText = `Elegí hasta ${PROGRESS_MAX_DAYS} días por período, sin fechas futuras.`;
+  const notice = invalid ? invalidText
+    : overlaps ? 'Los períodos se superponen.'
+    : differentLength ? 'Distinta duración: los totales no son equivalentes.'
+    : editing ? selectedDraft.end ? 'Tocá el primer día y el último.' : 'Ahora elegí el último día.' : null;
   return <>
-    <View style={[styles.header, { paddingHorizontal: spacing.md, paddingVertical: spacing.sm }]}>
-      <View style={styles.title}><AppText accessibilityRole="header" variant="headline">Comparar períodos</AppText></View>
-      <RoutineSheetButton label="Cerrar sin cambiar" icon="close" onPress={() => dismiss()} />
+    <View style={styles.compareHeader}>
+      <PeriodSheetHeader title="Comparar períodos" valid={valid} onClose={() => dismiss()} onDone={done}
+        confirmLabel="Ver comparación" confirmTestID="compare-apply" />
     </View>
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
       <View style={[styles.ab, fontScale > 1.3 && styles.abStacked]} testID="compare-ab">{(['a', 'b'] as const).map(k => {
@@ -152,20 +171,19 @@ function CompareEditor({ proposal, onApplied }: { proposal: DateRange | null; on
         <Shortcut label="Año pasado" active={kind === 'last_year'} disabled={!rangeA} onPress={() => quick('last_year')} />
         <Shortcut label="Personalizado" active={kind === 'custom'} onPress={() => { setKind('custom'); setEditing('b'); setMonth(draftB.end ?? draftB.start); }} />
       </View>
-      {editing ? <Animated.View entering={FadeIn.duration(brandTokens.motion.duration.fast)} layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.fast)} style={{ gap: spacing.sm }}>
+      {editing ? <Animated.View entering={reduced ? undefined : FadeIn.duration(brandTokens.motion.duration.fast)} layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.fast)} style={{ gap: spacing.sm }}>
         <View style={styles.header}><AppText variant="headline" style={{ flex: 1 }}>{editing === 'a' ? 'Período elegido' : 'Referencia'}</AppText>
-          <RoutineSheetButton label="Ocultar calendario" icon="close" onPress={() => setEditing(null)} /></View>
-        <RangeCalendar month={month} onMonth={setMonth} max={today} marks={marks} onDay={day} />
-        <AppText muted variant="footnote" accessibilityLiveRegion="polite">{selectedDraft.end ? 'Tocá el primer día y el último.' : 'Ahora elegí el último día.'}</AppText>
+          <RoutineSheetButton label="Ocultar calendario" icon="chevronDown" onPress={() => setEditing(null)} /></View>
+        <RangeCalendar month={month} onMonth={setMonth} max={today} marks={marks} onDay={day} fixedWeeks />
       </Animated.View> : null}
-      {rangeA && rangeB && daysBetween(rangeA.start, rangeA.end) !== daysBetween(rangeB.start, rangeB.end) ? <AppText muted variant="footnote">Distinta duración: los totales no son equivalentes.</AppText> : null}
-      {rangeA && rangeB && rangeA.start <= rangeB.end && rangeB.start <= rangeA.end ? <AppText muted variant="footnote">Los períodos se superponen.</AppText> : null}
-      {!valid && rangeA && rangeB ? <AppText muted variant="footnote">Elegí hasta {PROGRESS_MAX_DAYS} días por período, sin fechas futuras.</AppText> : null}
+      <View testID="compare-notice-slot">
+        <View style={styles.noticeSizer} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <AppText variant="footnote">{invalidText}</AppText>
+        </View>
+        {notice ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" style={styles.notice} testID="compare-notice">{notice}</AppText> : null}
+      </View>
+      {active.compare.kind !== 'none' ? <LinkRow label="Sin comparar" onPress={() => dismiss(() => setState({ ...active, compare: { kind: 'none' } }))} /> : null}
     </ScrollView>
-    <View style={{ padding: spacing.md, paddingBottom: Math.max(insets.bottom, spacing.md), gap: spacing.xs }}>
-      <Button testID="compare-apply" label="Ver comparación" disabled={!valid} onPress={done} />
-      {active.compare.kind !== 'none' ? <Button variant="quiet" label="Sin comparar" onPress={() => dismiss(() => setState({ ...active, compare: { kind: 'none' } }))} /> : null}
-    </View>
   </>;
 }
 function ABCell({ label, value, length, on }: { label: string; value: string; length: string | null; on: boolean }) {
@@ -173,13 +191,17 @@ function ABCell({ label, value, length, on }: { label: string; value: string; le
   return <View style={[styles.abCell, { backgroundColor: on ? colors.brandSubtle : 'transparent', borderColor: on ? 'transparent' : colors.border }]}>
     <AppText variant="caption" style={{ color: on ? colors.primary : colors.textMuted, fontWeight: '600' }}>{label}</AppText>
     <AppText numeric variant="headline">{value}</AppText>
-    {length ? <AppText muted numeric variant="footnote">{length}</AppText> : null}
+    <AppText muted numeric variant="footnote">{length ?? '—'}</AppText>
   </View>;
 }
 const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(0,0,0,0.3)' },
   sheet: { maxHeight: '92%', borderTopLeftRadius: brandTokens.radius.sheet, borderTopRightRadius: brandTokens.radius.sheet, paddingTop: 8 },
   content: { padding: 16, gap: 14 }, header: { flexDirection: 'row', alignItems: 'center', gap: 12 }, title: { flex: 1, alignItems: 'center', gap: 2 },
+  compareHeader: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  center: { textAlign: 'center' },
+  noticeSizer: { opacity: 0 },
+  notice: { position: 'absolute', left: 0, right: 0, top: 0 },
   shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   shortcutRow: { marginHorizontal: -16, flexGrow: 0 }, shortcutScroll: { paddingHorizontal: 16, gap: 8 }, shortcutGroup: { flexDirection: 'row', gap: 8 }, shortcut: { minHeight: 34, paddingHorizontal: 12, borderRadius: brandTokens.radius.full, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', justifyContent: 'center' },
   ab: { flexDirection: 'row', gap: 8 }, abStacked: { flexDirection: 'column' }, abItem: { flex: 1 },
