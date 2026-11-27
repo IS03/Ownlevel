@@ -50,8 +50,8 @@ function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
     {open ? <Animated.View entering={FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={styles.expanded} testID={`revisit-detail-${exercise.id}`}>
       {exercise.identity ? <AppText muted variant="footnote">{exercise.identity}</AppText> : null}
       {exercise.sets.map(set => <View key={set.setNumber} style={styles.set} accessible
-        accessibilityLabel={`Serie ${set.setNumber}: ${set.completed ? set.label : `${set.label === '—' ? '' : `${set.label}, `}no hecha`}${set.record ? ', récord' : ''}${set.before ? `. Antes ${set.before}` : ''}`}>
-        <AppText muted numeric style={styles.setNumber} variant="subheadline">{set.setNumber}</AppText>
+        accessibilityLabel={`${set.warmup ? "Calentamiento" : `Serie ${set.setNumber}`}: ${set.completed ? set.label : `${set.label === '—' ? '' : `${set.label}, `}no hecha`}${set.record ? ', récord' : ''}${set.before ? `. Antes ${set.before}` : ''}`}>
+        <AppText muted numeric style={styles.setNumber} variant="subheadline">{set.warmup ? "C" : set.setNumber}</AppText>
         <AppText numeric variant="headline" style={set.completed ? null : { color: colors.textMuted }}>{set.label}</AppText>
         {set.record ? <View style={[styles.tag, { backgroundColor: colors.brandSubtle }]}><AppText variant="caption" style={{ color: colors.primary }}>récord</AppText></View> : null}
         <View style={styles.flex} />

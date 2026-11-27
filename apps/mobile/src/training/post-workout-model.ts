@@ -32,7 +32,7 @@ type Exercise = SessionDetailDto['exercises'][number];
 /** The best completed set, the same rule as the comparison: load then reps, or reps when the mode compares reps. */
 function bestSet(exercise: Exercise) {
   const byLoad = loadCompared(exercise.weightModeSnapshot);
-  const done = exercise.payload.sets.filter(set => set.isCompleted && set.actualReps !== null && set.actualReps > 0 && (!byLoad || set.actualWeightKg !== null));
+  const done = exercise.payload.sets.filter(set => set.isCompleted && set.setKind !== "warmup" && set.actualReps !== null && set.actualReps > 0 && (!byLoad || set.actualWeightKg !== null));
   if (!done.length) return null;
   const better = (a: (typeof done)[number], b: (typeof done)[number]) => byLoad && a.actualWeightKg !== b.actualWeightKg ? a.actualWeightKg! > b.actualWeightKg! : a.actualReps! > b.actualReps!;
   const best = done.reduce((left, right) => better(right, left) ? right : left);

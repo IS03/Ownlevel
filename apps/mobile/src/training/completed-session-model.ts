@@ -21,7 +21,7 @@ export type CompletedSessionModel = {
   completedSetCount: number;
   metadata: CompletedMetadataItem[];
   /** Done exercises first; the ones with no completed set go last (shown in grey). */
-  exercises: { id: string; exerciseId: string; name: string; identity: string; done: boolean; sets: { setNumber: number; label: string; completed: boolean }[] }[];
+  exercises: { id: string; exerciseId: string; name: string; identity: string; done: boolean; sets: { setNumber: number; label: string; completed: boolean; warmup?: boolean }[] }[];
 };
 
 export function sessionDuration(startedAt: string, endedAt: string | null): string | null {
@@ -46,16 +46,16 @@ export function completedSessionModel(detail: SessionDetailDto): CompletedSessio
     id: exercise.id, exerciseId: exercise.exerciseId, name: exercise.nameSnapshot,
     identity: [exercise.muscleGroupLabelSnapshot, exercise.implementSnapshot, exercise.weightModeSnapshot].filter(Boolean).join(' · '),
     done: exercise.payload.sets.some(set => set.isCompleted),
-    sets: exercise.payload.sets.map(set => ({ setNumber: set.setNumber, label: setLabel(set, exercise.weightModeSnapshot), completed: set.isCompleted })),
+    sets: exercise.payload.sets.map(set => ({ setNumber: set.setNumber, label: setLabel(set, exercise.weightModeSnapshot), completed: set.isCompleted, ...(set.setKind === "warmup" ? { warmup: true } : {}) })),
   })).sort((left, right) => Number(right.done) - Number(left.done));
   const weighted = detail.exercises.filter(exercise => KG_MODES.has(exercise.weightModeSnapshot ?? 'Peso total'))
-    .flatMap(exercise => exercise.payload.sets.filter(set => set.isCompleted && set.actualWeightKg !== null && set.actualReps !== null));
+    .flatMap(exercise => exercise.payload.sets.filter(set => set.isCompleted && set.setKind !== "warmup" && set.actualWeightKg !== null && set.actualReps !== null));
   const volumeKg = weighted.length ? weighted.reduce((total, set) => total + set.actualWeightKg! * set.actualReps!, 0) : null;
   return {
     name: session.name, color: session.routineColor, startedAt: session.startedAt, endedAt: session.endedAt, volumeKg, status: session.status === 'discarded' ? 'discarded' : 'completed', logDate: session.logDate,
     duration: sessionDuration(session.startedAt, session.endedAt), exerciseCount: exercises.length,
     completedExerciseCount: exercises.filter(exercise => exercise.sets.some(set => set.completed)).length,
-    completedSetCount: exercises.reduce((total, exercise) => total + exercise.sets.filter(set => set.completed).length, 0),
+    completedSetCount: exercises.reduce((total, exercise) => total + exercise.sets.filter(set => set.completed && !set.warmup).length, 0),
     metadata: metadataItems({ energyLevel: session.metadata.energyLevel, performanceLevel: session.metadata.performanceLevel,
       painLevel: session.metadata.painLevel, notes: session.metadata.notes }),
     exercises,

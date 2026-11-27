@@ -17,7 +17,7 @@ function comparisonSource(source: TrainingAnalysisSource, end: string): Insights
     exercises: source.sessionExercises.map(e => ({ id: e.id, sessionId: e.workout_session_id, exerciseId: e.exercise_id, name: e.nombre_snapshot,
       isCompleted: e.is_completed, weightMode: e.weight_mode_snapshot, ...sessionExerciseContext(source, e) })),
     sets: source.sets.map(s => ({ id: s.id, sessionExerciseId: s.workout_session_exercise_id, actualReps: s.actual_reps,
-      actualLoad: s.actual_weight_kg, isCompleted: s.is_completed, completedAt: s.completed_at })),
+      actualLoad: s.actual_weight_kg, isCompleted: s.is_completed, completedAt: s.completed_at, setKind: s.set_kind })),
     feelings: [], metricDefinitions: [], metricValues: [], meals: [],
   };
 }

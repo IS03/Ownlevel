@@ -49,7 +49,7 @@ export function ownSessions(source: InsightsSource): OwnSession[] {
   const exercisesBySession = new Map<string, InsightsSource["exercises"][number][]>();
   for (const row of source.exercises) { const rows = exercisesBySession.get(row.sessionId); if (rows) rows.push(row); else exercisesBySession.set(row.sessionId, [row]); }
   const setsByExercise = new Map<string, InsightsSource["sets"][number][]>();
-  for (const set of source.sets) if (set.isCompleted && typeof set.actualReps === "number" && set.actualReps > 0) {
+  for (const set of source.sets) if (set.setKind !== "warmup" && set.isCompleted && typeof set.actualReps === "number" && set.actualReps > 0) {
     const rows = setsByExercise.get(set.sessionExerciseId); if (rows) rows.push(set); else setsByExercise.set(set.sessionExerciseId, [set]);
   }
   const sessions = source.sessions.filter(row => row.status === "completed" && row.date)

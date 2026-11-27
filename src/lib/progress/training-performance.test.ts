@@ -4,7 +4,9 @@ import {
   buildTrainingFeelings,
   buildTrainingPerformanceComparison,
 } from "./training-performance";
-import type { TrainingAnalysisSource } from "../phase2/training-analysis";
+import { buildSessionRecords, type TrainingAnalysisSource } from "../phase2/training-analysis";
+import { buildWeeklyTrainingSummaries } from "../phase2/training-progress-summary";
+import { trainingComparisonDto } from "../mobile-api/progress-training-comparison";
 import { configurationIdentity } from "../mobile-api/training-exercise-configuration-contract";
 import type { WorkoutSession, WorkoutSessionExercise, WorkoutSet } from "../phase2/types";
 
@@ -64,6 +66,25 @@ describe("Training V2 comparable performance", () => {
     ]).exercises[0]!;
     expect(result.status).toBe("improved");
     expect(result.signal).toMatchObject({ kind: "new_rep_record", currentValue: 11, referenceValue: 8, contextValue: 20 });
+  });
+
+  it("keeps Web weekly summaries, Progress and Comparaciones identical when marked warmups are present", () => {
+    const plain = source([
+      { id: "before", date: "2026-08-28", sets: [{ weight: 20, reps: 8 }] },
+      { id: "now", date: "2026-09-03", sets: [{ weight: 20, reps: 10 }] },
+    ]);
+    const extra = plain.sets.map((set, index) => ({ ...set, id: `warm-${index}`, set_number: 2, actual_reps: 25, actual_weight_kg: 200, set_kind: "warmup" as const }));
+    const mixed = { ...plain, sets: [...plain.sets, ...extra] };
+    const model = (values: TrainingAnalysisSource) => ({
+      records: buildTrainingPerformanceComparison({ source: values, ...periods }),
+      mobile: trainingComparisonDto(values, { preset: "7", ...periods.primaryPeriod, days: 7,
+        previousStart: periods.referencePeriod.start, previousEnd: periods.referencePeriod.end, bucket: "day", includesToday: false }),
+      week: buildWeeklyTrainingSummaries(values, "2026-09-03"),
+      progress: buildSessionRecords(values, periods.primaryPeriod),
+    });
+    expect(model(mixed)).toEqual(model(plain));
+    expect(model(mixed).records.exercises[0]?.signal).toMatchObject({ referenceValue: 8, currentValue: 10 });
+    expect(model(mixed).progress[0]?.exercises[0]?.sets).toEqual([{ weightKg: 20, reps: 10 }]);
   });
 
   it("marks more load at equal reps as an improvement", () => {

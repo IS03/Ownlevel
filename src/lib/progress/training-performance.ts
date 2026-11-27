@@ -1,3 +1,4 @@
+import { completedWorkSet } from "../phase2/training-set-kind";
 import { TRAINING_PROGRESS_METRICS } from "./analytics/catalog";
 import { weightModeStrategy } from "@/lib/mobile-api/weight-modes";
 import type { ProgressMetricSample, ProgressPeriodRange } from "./analytics/types";
@@ -200,7 +201,7 @@ function snapshotMap(source: TrainingAnalysisSource, range: ProgressPeriodRange,
     }));
   const setsByExercise = new Map<string, ComparableSet[]>();
   for (const set of source.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     const reps = finite(set.actual_reps);
     if (reps === null || reps <= 0) continue;
     const current = setsByExercise.get(set.workout_session_exercise_id) ?? [];
@@ -554,7 +555,7 @@ export function trainingLoadSamples(source: TrainingAnalysisSource, scope: Train
     .map((exercise) => [exercise.id, exercise.workout_session_id]));
   const setsBySession = new Map<string, { count: number; volume: number }>();
   for (const set of source.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     const sessionId = exerciseSession.get(set.workout_session_exercise_id);
     if (!sessionId) continue;
     const current = setsBySession.get(sessionId) ?? { count: 0, volume: 0 };

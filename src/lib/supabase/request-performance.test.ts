@@ -62,7 +62,7 @@ describe("request-scoped authenticated reads", () => {
   it("keeps Home payloads bounded to a meal count and summary columns", () => {
     expect(nutritionDay).toContain('.select("id", { count: "exact", head: true })');
     expect(robustTraining).toContain(
-      '"id, day_log_id, routine_id, routine_name_snapshot, session_name, status, started_at, ended_at, day_log:day_logs!inner(log_date), exercises:workout_session_exercises(id, workout_session_id, is_completed, muscle_group_label_snapshot, grupo_muscular_snapshot, sets:workout_sets(workout_session_exercise_id, actual_reps, actual_weight_kg, is_completed))"',
+      '"id, day_log_id, routine_id, routine_name_snapshot, session_name, status, started_at, ended_at, day_log:day_logs!inner(log_date), exercises:workout_session_exercises(id, workout_session_id, is_completed, muscle_group_label_snapshot, grupo_muscular_snapshot, sets:workout_sets(workout_session_exercise_id, actual_reps, actual_weight_kg, is_completed, set_kind))"',
     );
     expect(robustTraining).toContain(
       '"id, routine_name_snapshot, session_name, started_at, day_log:day_logs(log_date), exercises:workout_session_exercises(sets:workout_sets(is_completed))"',

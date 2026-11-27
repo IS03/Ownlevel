@@ -33,7 +33,7 @@ export type InsightsSource = {
     order?: number | null;
   }[];
   /** `setNumber`: the set's `set_number` in its block. Read only by the evidence detail; absent means unknown. */
-  sets: readonly { id: string; sessionExerciseId: string; actualReps: number | null; actualLoad: number | null; isCompleted: boolean; completedAt: string | null; setNumber?: number | null }[];
+  sets: readonly { id: string; sessionExerciseId: string; actualReps: number | null; actualLoad: number | null; isCompleted: boolean; completedAt: string | null; setNumber?: number | null; setKind?: "work" | "warmup" }[];
   feelings: readonly { sessionId: string; revision: number; facts: unknown }[];
   /** systemKey identifies the account's sleep metric; a name or a unit never does. */
   metricDefinitions: readonly { id: string; name: string; unit: string | null; valueType: string; archived: boolean; systemKey?: string | null;

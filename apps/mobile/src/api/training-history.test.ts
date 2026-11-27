@@ -66,7 +66,7 @@ describe('M3.4-3 history read contracts', () => {
     expect(await fetchTrainingExerciseHistory(api, exerciseId, 40)).toMatchObject({ status: 'unavailable' });
     expect(fetch.mock.calls.map(([url]) => String(url).replace('https://example.test', ''))).toEqual([
       '/api/mobile/v1/training/history?limit=20&cursor=cur_1', '/api/mobile/v1/training/days/2026-10-01',
-      '/api/mobile/v1/training/history/exercises', `/api/mobile/v1/training/history/exercises/${exerciseId}?limit=40&historyByRoutine=1&sets=1`]);
+      '/api/mobile/v1/training/history/exercises', `/api/mobile/v1/training/history/exercises/${exerciseId}?limit=40&historyByRoutine=1&sets=1&setKinds=1`]);
   });
 });
 
@@ -111,6 +111,13 @@ it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves compl
 
 
 describe('routine-scoped exercise history', () => {
+  it('keeps explicit set kinds and rejects an unknown kind without requiring it from older servers', () => {
+    const entry = { sessionId, logDate: '2026-10-01', routineName: 'PUSH', mark: null, completedSets: 1, rirValues: [],
+      sets: [{ weightKg: 10, reps: 12, setKind: 'warmup' }, { weightKg: 30, reps: 8 }] };
+    const detail = { exercise: { id: exerciseId, name: 'Press', muscleGroup: null, muscleLabel: null, implement: null, weightMode: null }, latest: entry, best: null, sessions: [entry], hasMore: false };
+    expect(parseTrainingExerciseHistory(detail, exerciseId)?.sessions[0].sets).toEqual(entry.sets);
+    expect(parseTrainingExerciseHistory({ ...detail, sessions: [{ ...entry, sets: [{ ...entry.sets[0], setKind: 'other' }] }] }, exerciseId)).toBeUndefined();
+  });
   it('accepts both legacy and expanded entries and rejects malformed routine IDs', async () => {
     const entry = { sessionId, logDate: '2026-10-01', routineName: 'PUSH', mark: null, completedSets: 1, rirValues: [] };
     const detail = { exercise: { id: exerciseId, name: 'Press', muscleGroup: null, muscleLabel: null, implement: null, weightMode: null }, latest: entry, best: null, sessions: [entry], hasMore: false };

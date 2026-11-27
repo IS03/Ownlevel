@@ -1,3 +1,4 @@
+import { completedWorkSet } from "./training-set-kind";
 import type {
   WorkoutSession,
   WorkoutSessionExercise,
@@ -16,7 +17,7 @@ type TrainingProgressSource = {
   >>;
   sets: Array<Pick<
     WorkoutSet,
-    "workout_session_exercise_id" | "actual_reps" | "actual_weight_kg" | "is_completed"
+    "workout_session_exercise_id" | "actual_reps" | "actual_weight_kg" | "is_completed" | "set_kind"
   >>;
   dateByDayLog: Map<string, string>;
 };
@@ -117,7 +118,7 @@ export function buildWeeklyTrainingSummaries(
   const sessionById = new Map(completedSessions.map((session) => [session.id, session]));
   const setsByExercise = new Map<string, TrainingProgressSource["sets"]>();
   for (const set of data.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     const current = setsByExercise.get(set.workout_session_exercise_id) ?? [];
     current.push(set);
     setsByExercise.set(set.workout_session_exercise_id, current);

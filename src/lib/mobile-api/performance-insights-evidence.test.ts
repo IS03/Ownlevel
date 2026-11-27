@@ -83,7 +83,7 @@ describe("#367 GET evidencia: una lectura acotada a la comparación elegida", ()
     expect(page.filters).toEqual(expect.arrayContaining([["eq", "user_id", USER], ["eq", "exercise_id", EXERCISE], ["eq", "session.status", "completed"], ["eq", "sets.user_id", USER], ["eq", "set_count.user_id", USER]]));
     expect(page.selected).toContain("set_count:workout_sets(count)");
     expect(page.selected).toContain("exercise_order");
-    expect(page.selected).toContain("sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at,set_number)");
+    expect(page.selected).toContain("sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at,set_kind,set_number)");
     expect(page.selected).toContain("session:workout_sessions!inner(");
   });
 

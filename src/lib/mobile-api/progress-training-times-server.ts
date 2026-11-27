@@ -31,7 +31,7 @@ export async function readTrainingTimesSource(context: MobileSupabaseAuthenticat
   type FeelingRow = { session_id: string; revision: number; facts: unknown };
   const [source, feelings] = await Promise.all([
     // All training history is required by the canonical previous-compatible-exercise comparator.
-    loadCompletedTrainingData(webAuth(context)),
+    loadCompletedTrainingData(webAuth(context), { includeWarmups: true }),
     readAllTrainingRows<FeelingRow>('Leer energía de horarios', (from, to) => context.supabase.from('workout_session_feelings')
       .select('session_id,revision,facts,session:workout_sessions!inner(user_id,status,day:day_logs!inner(log_date))')
       .eq('session.user_id', context.userId).eq('session.status', 'completed')
@@ -51,7 +51,7 @@ export async function readTrainingTimesSource(context: MobileSupabaseAuthenticat
       name: e.nombre_snapshot, implement: e.implement_snapshot, weightMode: e.weight_mode_snapshot, isCompleted: e.is_completed,
       configuration: source.configurations?.get(e.id) ?? null })),
     sets: source.sets.map(s => ({ id: s.id, sessionExerciseId: s.workout_session_exercise_id, actualReps: number(s.actual_reps),
-      actualLoad: number(s.actual_weight_kg), isCompleted: s.is_completed, completedAt: s.completed_at })),
+      actualLoad: number(s.actual_weight_kg), isCompleted: s.is_completed, completedAt: s.completed_at, setKind: s.set_kind })),
     feelings: feelings.map(f => ({ sessionId: f.session_id, revision: f.revision, facts: f.facts })),
     metricDefinitions: [], metricValues: [], meals: [],
   };

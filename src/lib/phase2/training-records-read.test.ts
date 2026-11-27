@@ -4,7 +4,8 @@ vi.mock("server-only", () => ({}));
 import { loadTrainingRecordsData, trainingRecordsSource, type TrainingRecordsRead } from "./training-robust";
 
 const MIGRATION = "supabase/migrations/20261030235611_training_records_read_expand.sql";
-const MIGRATION_V2 = "supabase/migrations/20261110120000_training_records_read_v2_expand.sql";
+const MIGRATION_V3 = "supabase/migrations/20261127091316_training_records_work_sets_expand.sql";
+const MIGRATION_V2 = "supabase/migrations/20261110222214_training_records_read_v2_expand.sql";
 const read: TrainingRecordsRead = {
   sessions: [{ id: "s1", day_log_id: "d1", status: "completed", started_at: "2026-09-10T10:00:00Z", ended_at: "2026-09-10T11:00:00Z",
     routine_id: null, routine_name_snapshot: null, session_name: null, day: { log_date: "2026-09-10" } } as never],
@@ -55,7 +56,7 @@ describe("Home's records read", () => {
   it("calls the RPC from the window's first day", async () => {
     const { context, supabase, tables } = client({ data: read, error: null });
     const source = await loadTrainingRecordsData(context, "2026-09-01");
-    expect(supabase.rpc).toHaveBeenCalledWith("mobile_read_training_records_v2", { p_from: "2026-09-01" });
+    expect(supabase.rpc).toHaveBeenCalledWith("mobile_read_training_records_v3", { p_from: "2026-09-01" });
     expect(supabase.rpc).toHaveBeenCalledTimes(1);
     expect(tables).toEqual([]);
     expect(source.sessions).toHaveLength(2);
@@ -114,4 +115,13 @@ describe("Home's records read", () => {
     expect(sql).toContain("grant execute on function public.mobile_read_training_records_v2(date) to authenticated;");
     expect(sql).toContain("drop function if exists public.mobile_read_training_records_v2(date);");
   });
+});
+
+it("v3 excludes marked warmups on both sides of the record boundary without changing old RPCs", () => {
+  const sql = readFileSync(MIGRATION_V3, "utf8");
+  expect(sql.match(/t\.set_kind = 'work'/g)).toHaveLength(2);
+  expect(sql).toContain("stable security invoker");
+  expect(sql).toContain("select auth.uid()");
+  expect(sql).toContain("revoke all on function public.mobile_read_training_records_v3(date) from public, anon;");
+  expect(sql).not.toMatch(/create(?: or replace)? function public\.mobile_read_training_records_v2/i);
 });

@@ -1,3 +1,4 @@
+import { completedWorkSet } from "./training-set-kind";
 import {
   buildExerciseReportPoints,
   completedExerciseSets,
@@ -334,7 +335,7 @@ function exerciseSessionSubject(id: string, label: string, sessions: readonly Ex
       start: point.logDate,
       end: point.logDate,
       sessions: 1,
-      sets: sessions.find((session) => session.sessionId === point.sessionId)?.sets.filter((set) => set.is_completed).length ?? 0,
+      sets: sessions.find((session) => session.sessionId === point.sessionId)?.sets.filter(completedWorkSet).length ?? 0,
       minutes: 0,
       volumeKg: point.volumeKg,
       exerciseCount: 1,

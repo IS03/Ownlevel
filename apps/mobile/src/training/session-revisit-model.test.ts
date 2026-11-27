@@ -44,6 +44,16 @@ describe('SF1 · a session seen again', () => {
     expect(plain.exercises.every(exercise => exercise.status === null && exercise.sets.every(row => row.before === null && !row.record))).toBe(true);
     expect(revisitModel(detail(), { ...summary(), sessionId: PREV }).achievement).toBeNull();
   });
+  it('retains the warmup row without counting it or assigning a work record or comparison to it', () => {
+    const value = detail();
+    const press = value.exercises.find(e => e.id === A)!;
+    press.payload.sets = [{ ...set(9, 20, 7), setKind: 'warmup' }, ...press.payload.sets];
+    const model = revisitModel(value, summary());
+    expect(model.sentence).toBe('5 series en 1 h 34 min.');
+    expect(model.muscles).toContainEqual({ label: 'Pecho', sets: 3 });
+    expect(model.exercises[0].sets[0]).toMatchObject({ warmup: true, record: false, before: null });
+    expect(model.exercises[0].sets[1]).toMatchObject({ record: true, before: '17,5×8' });
+  });
   it('feelings only when answered: a recorded 0 pain is shown', () => {
     expect(revisitModel(detail()).feelings).toEqual([
       { key: 'energyLevel', label: 'Energía', value: 4, scale: 5 }, { key: 'painLevel', label: 'Dolor', value: 0, scale: 10 }]);

@@ -34,6 +34,7 @@ function serializeRecentHistory(
           actual_reps: set.actual_reps,
           actual_weight_kg: set.actual_weight_kg,
           is_completed: set.is_completed,
+          set_kind: set.set_kind,
         })),
       })),
     ]),

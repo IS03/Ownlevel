@@ -92,6 +92,14 @@ describe("#367 evidencia de un ejercicio: la misma comparación que publicó Ins
     }
   });
 
+  it("omits warmup ids from both sides of comparison evidence without losing working-set signals", () => {
+    const base = history([[{ sets: [[8, 80]] }], [{ sets: [[10, 80]] }]]);
+    const warmups = base.sets.map((set, index) => ({ ...set, id: id(5, index), actualLoad: 200, actualReps: 25, setKind: "warmup" as const }));
+    const result = evidence({ ...base, sets: [...warmups, ...base.sets] });
+    expect(result).toEqual(evidence(base));
+    expect(result.item?.current.sets.map(set => set.id)).toEqual([base.sets[1].id]);
+  });
+
   it("keeps each mode in its own unit: lingotes, bodyweight reps and seconds are never kilograms", () => {
     for (const [mode, unit, kind] of [["Lingotes (no kg)", "lingotes", "reps_at_load"], ["Peso corporal", "reps", "bodyweight_reps"], ["Tiempo (segundos)", "seconds", "time"]] as const) {
       const sets: Set_[] = mode === "Lingotes (no kg)" ? [[8, 3]] : [[30, null]];

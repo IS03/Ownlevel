@@ -19,7 +19,10 @@ export const instantMs = (value: string | null | undefined): number | null => {
 
 export function toPerformanceSessions(source: InsightsSource): { sessions: PerformanceSession[]; orphanRows: number } {
   const setsByExercise = new Map<string, InsightsSource["sets"][number][]>();
+  let observedSets = 0;
   for (const set of source.sets) {
+    if (set.setKind === "warmup") continue;
+    observedSets++;
     const rows = setsByExercise.get(set.sessionExerciseId);
     if (rows) rows.push(set); else setsByExercise.set(set.sessionExerciseId, [set]);
   }
@@ -43,7 +46,7 @@ export function toPerformanceSessions(source: InsightsSource): { sessions: Perfo
     chronology: session.startedAt && session.endedAt ? "verified" : "uncertain",
     exercises: blocksBySession.get(session.id) ?? [],
   }));
-  return { sessions, orphanRows: orphanBlocks + source.sets.length - attachedSets };
+  return { sessions, orphanRows: orphanBlocks + observedSets - attachedSets };
 }
 
 /**

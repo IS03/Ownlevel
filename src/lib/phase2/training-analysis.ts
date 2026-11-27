@@ -1,3 +1,4 @@
+import { completedWorkSet } from "./training-set-kind";
 import { MUSCLE_GROUP_OPTIONS, muscleGroupLabel } from "./muscle-groups";
 import { buildWeeklyTrainingSummaries, formatTrainingMinutes } from "./training-progress-summary";
 import { normalizeExerciseSearch } from "./exercise-library";
@@ -314,7 +315,7 @@ export function buildSessionRecords(source: TrainingAnalysisSource, range: { sta
   const completedIds = new Set(completedSessions.map((session) => session.id));
   const setsByExercise = new Map<string, CompletedSet[]>();
   for (const set of source.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     const current = setsByExercise.get(set.workout_session_exercise_id) ?? [];
     current.push({ weightKg: finite(set.actual_weight_kg), reps: finite(set.actual_reps) });
     setsByExercise.set(set.workout_session_exercise_id, current);

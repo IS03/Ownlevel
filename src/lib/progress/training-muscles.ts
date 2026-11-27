@@ -1,3 +1,4 @@
+import { completedWorkSet } from "../phase2/training-set-kind";
 import { MUSCLE_GROUP_OPTIONS, muscleGroupLabel } from "../phase2/muscle-groups";
 import type {
   TrainingAnalysis,
@@ -67,7 +68,7 @@ export const TRAINING_CROSS_MUSCLE_METRICS = ["sets", "sessions", "averageSets",
 function completedSetCountBySessionExercise(source: TrainingAnalysisSource) {
   const counts = new Map<string, number>();
   for (const set of source.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     counts.set(set.workout_session_exercise_id, (counts.get(set.workout_session_exercise_id) ?? 0) + 1);
   }
   return counts;

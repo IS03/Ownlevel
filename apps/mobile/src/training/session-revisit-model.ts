@@ -10,7 +10,7 @@ import { MUSCLE_GROUP_OPTIONS } from './exercise-library-model';
 // against the last time. Without the summary nothing is compared (never "↗" or "=" by guess).
 export type RevisitFeeling = { key: 'energyLevel' | 'performanceLevel' | 'painLevel'; label: string; value: number; scale: 5 | 10 };
 export type RevisitStatus = { kind: 'record' | 'improved' | 'declined' | 'same' | 'first'; label: string };
-export type RevisitSet = { setNumber: number; label: string; completed: boolean; before: string | null; record: boolean };
+export type RevisitSet = { setNumber: number; label: string; completed: boolean; before: string | null; record: boolean; warmup?: boolean };
 export type RevisitExercise = {
   id: string; exerciseId: string; name: string; identity: string; done: boolean; line: string; note: string | null;
   status: RevisitStatus | null; sets: RevisitSet[];
@@ -30,8 +30,12 @@ function compact(weight: number | null, reps: number | null, mode: string | null
   return weight !== null && reps !== null ? `${number(weight)}×${number(reps)}` : weight !== null ? number(weight) : reps !== null ? number(reps) : null;
 }
 /** "90×10 · 90×9 · 90×8 kg": the completed sets in a line, the unit once at the end. */
-export function setsLine(sets: { actualWeightKg: number | null; actualReps: number | null; isCompleted: boolean }[], mode: string | null) {
-  const parts = sets.filter(set => set.isCompleted).map(set => compact(set.actualWeightKg, set.actualReps, mode)).filter((part): part is string => part !== null);
+export function setsLine(sets: Pick<SessionDetailDto['exercises'][number]['payload']['sets'][number], 'actualWeightKg' | 'actualReps' | 'isCompleted' | 'setKind'>[], mode: string | null) {
+  const parts = sets.flatMap(set => {
+    if (!set.isCompleted) return [];
+    const label = compact(set.actualWeightKg, set.actualReps, mode);
+    return label === null ? [] : [set.setKind === 'warmup' ? `C ${label}` : label];
+  });
   if (!parts.length) return 'no hecha';
   const unit = unitOf(mode);
   return `${parts.join(' · ')}${unit ? ` ${unit}` : ''}`;
@@ -67,7 +71,7 @@ export function revisitModel(detail: SessionDetailDto, summary?: SessionSummaryD
   // One record per exercise: it goes to the first session exercise whose sets hold the mark.
   const recordOwner = new Map<string, string>();
   for (const [exerciseId, item] of records) {
-    const owner = detail.exercises.find(exercise => exercise.exerciseId === exerciseId && exercise.payload.sets.some(set => set.isCompleted
+    const owner = detail.exercises.find(exercise => exercise.exerciseId === exerciseId && exercise.payload.sets.some(set => set.isCompleted && set.setKind !== "warmup"
       && set.actualWeightKg === item.mark.weightKg && set.actualReps === item.mark.reps)) ?? detail.exercises.find(exercise => exercise.exerciseId === exerciseId);
     if (owner) recordOwner.set(owner.id, exerciseId);
   }
@@ -75,11 +79,13 @@ export function revisitModel(detail: SessionDetailDto, summary?: SessionSummaryD
     const row = rows.get(exercise.id), recordId = recordOwner.get(exercise.id), record = recordId ? records.get(recordId) : undefined;
     const mode = exercise.weightModeSnapshot, before = row?.previous && row.status !== 'not_comparable' ? row.previous.sets : [];
     let marked = false;
-    const sets = exercise.payload.sets.map((set, index) => {
-      const previous = before[index], shown = previous ? compact(previous.weightKg, previous.reps, mode) : null;
-      const isRecord = !marked && !!record && set.isCompleted && set.actualWeightKg === record.mark.weightKg && set.actualReps === record.mark.reps;
+    let workIndex = 0;
+    const sets = exercise.payload.sets.map(set => {
+      const warmup = set.setKind === "warmup";
+      const previous = warmup ? null : before[workIndex++], shown = previous ? compact(previous.weightKg, previous.reps, mode) : null;
+      const isRecord = !marked && !!record && !warmup && set.isCompleted && set.actualWeightKg === record.mark.weightKg && set.actualReps === record.mark.reps;
       if (isRecord) marked = true;
-      return { setNumber: set.setNumber, label: exerciseSetLabel(set, mode ?? 'Peso total'), completed: set.isCompleted, before: shown, record: isRecord };
+      return { setNumber: set.setNumber, label: exerciseSetLabel(set, mode ?? 'Peso total'), completed: set.isCompleted, before: shown, record: isRecord, ...(warmup ? { warmup } : {}) };
     });
     return {
       id: exercise.id, exerciseId: exercise.exerciseId, name: exercise.nameSnapshot,
@@ -98,7 +104,7 @@ export function revisitModel(detail: SessionDetailDto, summary?: SessionSummaryD
   const volume = volumeLabel(base.volumeKg);
   const groups = new Map<string, number>();
   for (const exercise of detail.exercises) {
-    const done = exercise.payload.sets.filter(set => set.isCompleted).length;
+    const done = exercise.payload.sets.filter(set => set.isCompleted && set.setKind !== "warmup").length;
     if (done) { const label = exercise.muscleGroupLabelSnapshot ?? MUSCLE_GROUP_OPTIONS.find(option => option.value === exercise.muscleGroupSnapshot)?.label ?? 'Otros'; groups.set(label, (groups.get(label) ?? 0) + done); }
   }
   const metadata = detail.session.metadata;
