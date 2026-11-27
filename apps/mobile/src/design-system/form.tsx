@@ -1,3 +1,4 @@
+import type { Ref } from 'react';
 import { StyleSheet, TextInput, type TextInputProps, type TextStyle, View, type ViewStyle } from 'react-native';
 
 import { layout } from './brand';
@@ -23,6 +24,7 @@ type TextFieldProps = Omit<TextInputProps, 'editable' | 'style'> & {
   search?: boolean;
   style?: ViewStyle;
   inputStyle?: TextStyle;
+  inputRef?: Ref<TextInput>;
 };
 
 /**
@@ -30,7 +32,7 @@ type TextFieldProps = Omit<TextInputProps, 'editable' | 'style'> & {
  * "elevated" surface, no glass. Form logic stays in the caller.
  */
 export function TextField({
-  accessibilityLabel, disabled = false, error, hideLabel = false, hint, inputStyle, label, multiline, numeric = false,
+  accessibilityLabel, disabled = false, error, hideLabel = false, hint, inputRef, inputStyle, label, multiline, numeric = false,
   search = false, style, unit, ...props
 }: TextFieldProps) {
   const { colors } = useOwnlevelTheme();
@@ -43,6 +45,7 @@ export function TextField({
         </AppText>
       )}
       <TextInput
+        ref={inputRef}
         accessibilityHint={hint}
         accessibilityLabel={accessibilityLabel ?? label}
         accessibilityState={{ disabled }}

@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BODY_MEASUREMENT_FIELDS, BODY_MEASUREMENT_LABELS, type BodyMeasurementField } from '@/api/body';
-import { LinkRow, AppIcon, AppSheet, AppText, Button, GlassSurface, TextField, brandTokens, pressedStyle, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppSheet, AppText, Button, GlassSurface, TextField, brandTokens, pressedStyle, radius, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import type { BodyController, BodyState } from './body-controller';
 import { BodyDateField } from './body-date-field';
@@ -12,20 +13,28 @@ import type { MeasurementEditor, WeightEditor } from './body-storage';
 import { WEIGHT_REFERENCE_TEXT, weightFieldWidth, type MeasuredReference } from './weight-field-width';
 
 /** Close (✕) and save (✓) glass controls, the same as every other editor sheet in the app. */
-function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
-  label: string; icon: 'close' | 'checkmark'; disabled: boolean; accent?: boolean; pending?: boolean; onPress: () => void;
+function SheetControl({ label, icon, disabled, accent, pending, onPress, animate }: {
+  label: string; icon: 'close' | 'checkmark'; disabled: boolean; accent?: boolean; pending?: boolean; animate?: boolean; onPress: () => void;
 }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const dim = disabled && !pending ? 0.4 : 1;
+  const fade = useAnimatedStyle(() => ({ opacity: animate ? withTiming(dim, { duration: brandTokens.motion.duration.fast }) : dim }));
+  const tint = useAnimatedStyle(() => ({
+    opacity: animate ? withTiming(disabled && !pending ? 0 : 1, { duration: brandTokens.motion.duration.fast }) : 1,
+  }));
   return <Pressable accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ disabled, busy: pending }} disabled={disabled} onPress={onPress}
     style={({ pressed }) => pressedStyle(pressed, reduced)}>
-    <GlassSurface interactive style={[styles.control, accent && { backgroundColor: colors.primary }, disabled && !pending && { opacity: 0.4 }]}>
-      {pending ? <ActivityIndicator color={accent ? colors.onPrimary : colors.text} /> : <AppIcon name={icon} color={accent ? colors.onPrimary : colors.text} size={20} />}
-    </GlassSurface>
+    <Animated.View style={fade}>
+      <GlassSurface interactive style={[styles.control, accent && !animate && { backgroundColor: colors.primary }]}>
+        {accent && animate ? <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.primary, borderRadius: radius.tabBar }, tint]} /> : null}
+        {pending ? <ActivityIndicator color={accent ? colors.onPrimary : colors.text} /> : <AppIcon name={icon} color={accent && (!animate || !disabled) ? colors.onPrimary : colors.text} size={20} />}
+      </GlassSurface>
+    </Animated.View>
   </Pressable>;
 }
 function Header({ title, subtitle, close, save }: {
   title: string; subtitle?: string; close: { onPress: () => void; disabled: boolean };
-  save: { label: string; onPress: () => void; disabled: boolean; pending: boolean };
+  save: { label: string; onPress: () => void; disabled: boolean; pending: boolean; animate?: boolean };
 }) {
   return <View style={styles.header}>
     <SheetControl label="Cerrar" icon="close" disabled={close.disabled} onPress={close.onPress} />
@@ -33,7 +42,7 @@ function Header({ title, subtitle, close, save }: {
       <AppText accessibilityRole="header" variant="headline" style={styles.center}>{title}</AppText>
       {subtitle ? <AppText muted numeric variant="caption" style={styles.center}>{subtitle}</AppText> : null}
     </View>
-    <SheetControl label={save.label} icon="checkmark" accent disabled={save.disabled} pending={save.pending} onPress={save.onPress} />
+    <SheetControl label={save.label} icon="checkmark" accent disabled={save.disabled} pending={save.pending} animate={save.animate} onPress={save.onPress} />
   </View>;
 }
 
@@ -137,21 +146,21 @@ function WeightForm({ editor, state, controller, closing }: { editor: WeightEdit
  * Many fields: the app sheet bounded above the keyboard (the same as "Cambiar un día" in Etapas). The ✕ / ✓ header
  * stays pinned and only the form scrolls; dragging it down with changes asks first and never bounces back.
  */
-function LongSheet({ state, controller, children, header, testID }: { state: BodyState; controller: BodyController; children: ReactNode; header: (close: () => void) => ReactNode; testID: string }) {
+function LongSheet({ state, controller, children, header, testID, scrollRef }: { scrollRef: RefObject<ScrollView | null>; state: BodyState; controller: BodyController; children: ReactNode; header: (close: () => void) => ReactNode; testID: string }) {
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets();
   const { locked, beforeDismiss } = useClose(state, controller);
   const ios = Platform.OS === 'ios';
   return <AppSheet onClose={() => controller.close()} closeLabel="Cerrar carga de medidas" locked={locked} beforeDismiss={beforeDismiss} dismissKeyboardOnClose
     nativeKeyboard={ios} keyboardViewport={ios} keyboardTopInset={insets.top + spacing.md} keyboardInset={Math.max(insets.bottom, 16) - 8}
     style={{ backgroundColor: colors.background, maxHeight: ios ? '100%' : '92%', flexShrink: 1 }} testID={testID}>
-    <LongSheetBody header={header}>{children}</LongSheetBody>
+    <LongSheetBody header={header} scrollRef={scrollRef}>{children}</LongSheetBody>
   </AppSheet>;
 }
-function LongSheetBody({ header, children }: { header: (close: () => void) => ReactNode; children: ReactNode }) {
+function LongSheetBody({ header, children, scrollRef }: { scrollRef: RefObject<ScrollView | null>; header: (close: () => void) => ReactNode; children: ReactNode }) {
   const dismiss = useAppSheetDismiss(), insets = useSafeAreaInsets();
   return <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height" style={styles.shrink}>
     <View style={styles.pageHeader}>{header(() => dismiss())}</View>
-    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.shrink} contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + spacing.md }]}
+    <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.shrink} contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + spacing.md }]}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" testID="body-editor">{children}</ScrollView>
   </KeyboardAvoidingView>;
 }
@@ -164,6 +173,7 @@ export function MeasurementEditorSheet({ editor, state, controller, initialField
   const suspect = baseline?.qualityStatus === 'suspect';
   const legacy = baseline ? (['armCm', 'thighCm'] as const).filter(f => baseline[f] !== null) : [];
   const today = state.read.overview?.today ?? '';
+  const scrollRef = useRef<ScrollView>(null);
   const [reviewDraft, setReviewDraft] = useState<MeasurementEditor['draft'] | null>(null);
   const [validation, setValidation] = useState<{ draft: MeasurementEditor['draft']; errors: Record<string, string> } | null>(null);
   const [details, setDetails] = useState(!!editor.draft.condition || !!editor.draft.notes);
@@ -176,9 +186,9 @@ export function MeasurementEditorSheet({ editor, state, controller, initialField
     setReviewDraft(editor.draft);
   };
   const saveLabel = reviewing ? suspect ? 'Guardar y verificar' : 'Guardar' : 'Revisar medidas';
-  return <LongSheet state={state} controller={controller} testID="body-measurement-sheet" header={close => <Header title={reviewing ? 'Revisar medición' : baseline ? 'Editar medición' : 'Registrar medidas'}
+  return <LongSheet scrollRef={scrollRef} state={state} controller={controller} testID="body-measurement-sheet" header={close => <Header title={reviewing ? 'Revisar medición' : baseline ? 'Editar medición' : 'Registrar medidas'}
     subtitle={reviewing ? 'Se guardará un solo registro' : 'Completá solo lo que mediste'} close={{ onPress: close, disabled: busy || !!state.intent }}
-    save={{ label: saveLabel, onPress: reviewing ? () => void controller.saveMeasurement() : review, disabled: !editable || (!!baseline && !suspect && !controller.dirty()), pending: busy }} />}>
+    save={{ label: saveLabel, onPress: reviewing ? () => void controller.saveMeasurement() : review, disabled: !editable || (!baseline && !BODY_MEASUREMENT_FIELDS.some(field => editor.draft[field].trim())) || (!!baseline && !suspect && !controller.dirty()), pending: busy, animate: true }} />}>
     {baseline ? measurementBadges(baseline).map(badge => <AppText key={badge.text} variant="footnote" style={{ color: badge.tone === 'warning' ? colors.text : colors.textMuted }}>{badge.text}</AppText>) : null}
     {suspect ? <AppText muted variant="footnote">Al guardar la corrección, la medición se marca como verificada y vuelve a contar en el análisis.</AppText> : null}
     {reviewing && 'fields' in parsed ? <View style={styles.review} testID="body-measurement-review">
@@ -192,8 +202,8 @@ export function MeasurementEditorSheet({ editor, state, controller, initialField
       <AppText muted variant="footnote">Las medidas que dejaste vacías no se completan con valores anteriores.</AppText>
       <Button label="Volver a editar" variant="secondary" disabled={!editable} onPress={() => setReviewDraft(null)} />
     </View> : <>
-      <BodyDateField value={editor.draft.date} today={today} editable={editable} onChange={v => controller.change('date', v)} error={errors.date} />
-      <MeasurementFields initialField={initialField} editor={editor} state={{ ...state, errors }} controller={controller} editable={editable} />
+      <BodyDateField value={editor.draft.date} today={today} editable={editable} onChange={v => controller.change('date', v)} error={errors.date} compactLabel />
+      <MeasurementFields scrollRef={scrollRef} initialField={initialField} editor={editor} state={{ ...state, errors }} controller={controller} editable={editable} />
       <LinkRow kind="disclosure" expanded={details} label={details ? 'Ocultar condición y notas' : 'Agregar condición o notas'} onPress={() => setDetails(v => !v)} />
       {details || errors.condition || errors.notes ? <>
         <TextField label="Condición" value={editor.draft.condition} onChangeText={v => controller.change('condition', v)} error={errors.condition}
