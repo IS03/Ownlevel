@@ -1,5 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
+import { Alert, Keyboard, Platform, type KeyboardEvent } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import type { PersonalFood } from '@/api/nutrition-food';
 import type { QuickSelection } from '@/api/nutrition-quick';
@@ -32,7 +34,9 @@ function fixture() {
     read: jest.fn<PlateApi['read']>().mockImplementation(async d => ({ status: 'ok', data: nutritionFixture(d), meta })),
   };
   const c = new PlateController(api, new PlateIntentRepository({ getItem: async k => map.get(k) ?? null, setItem: async (k, v) => { map.set(k, v); }, removeItem: async k => { map.delete(k); } }, 'owner'), () => {});
-  const ui = () => <OwnlevelThemeProvider initialMode="light"><PlateEditor controller={c} state={c.getSnapshot()} /></OwnlevelThemeProvider>;
+  const ui = () => <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+    <OwnlevelThemeProvider initialMode="light"><PlateEditor controller={c} state={c.getSnapshot()} /></OwnlevelThemeProvider>
+  </SafeAreaProvider>;
   const view = render(ui());
   c.subscribe(() => view.rerender(ui()));
   return { c, api, view };
@@ -64,6 +68,32 @@ describe('Plato', () => {
     expect(api.confirm).toHaveBeenCalledWith(expect.objectContaining({ operation: 'register', source: { kind: 'plate', title: 'Merienda', saveToLibrary: false },
       quantities: [{ itemId: bread.id, quantity: 2, version: bread.version }, { itemId: cheese.id, quantity: 30, version: cheese.version },
         { itemId: yogurt.source.id, quantity: 1, version: yogurt.source.version, kind: 'saved' }] }));
+  });
+  it('keeps review actions outside the scroll, hides them with the keyboard and clears only after confirmation', async () => {
+    const listeners = new Map<string, (event: KeyboardEvent) => void>();
+    const keyboard = jest.spyOn(Keyboard, 'addListener').mockImplementation((event, cb) => {
+      listeners.set(event, cb);
+      return { remove: () => { listeners.delete(event); } } as ReturnType<typeof Keyboard.addListener>;
+    });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    try {
+      const { c, api, view } = fixture();
+      await act(async () => { await c.initialize(); c.open(DATE); });
+      fireEvent.press(view.getByLabelText('Agregar PAN LACTAL al plato'));
+      fireEvent.press(view.getByTestId('plate-bar'));
+      expect(view.getByTestId('meal-review-footer')).toBeTruthy();
+      expect(view.getByTestId('meal-review-scroll').findAllByProps({ testID: 'plate-review-actions' })).toHaveLength(0);
+      act(() => listeners.get(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow')?.({} as KeyboardEvent));
+      expect(view.queryByTestId('plate-review-actions')).toBeNull();
+      expect(view.getByTestId('plate-title')).toBeTruthy();
+      act(() => listeners.get('keyboardDidHide')?.({} as KeyboardEvent));
+      fireEvent.press(view.getByRole('button', { name: 'Vaciar plato' }));
+      expect(c.getSnapshot().draft?.items).toHaveLength(1);
+      const confirmation = alert.mock.calls.at(-1)?.[2]?.find(action => action.style === 'destructive');
+      act(() => confirmation?.onPress?.());
+      expect(c.getSnapshot().draft?.items).toHaveLength(0);
+      expect(api.confirm).not.toHaveBeenCalled();
+    } finally { keyboard.mockRestore(); alert.mockRestore(); }
   });
   it('searches the foods without accents or case and closes keeping the plate', async () => {
     const { c, view } = fixture();

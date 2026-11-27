@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown, LinearTransition } from 'react-native-reanimated';
-import { AppIcon, AppText, Button, GlassSurface, LinkRow, LoadingState, SegmentedControl, brandTokens, useOwnlevelTheme, useReduceMotion, useFieldSurface } from '@/design-system';
+import { AppIcon, AppText, Button, GlassSurface, LinkRow, LoadingState, SegmentedControl, brandTokens, pressedStyle, useOwnlevelTheme, useReduceMotion, useFieldSurface } from '@/design-system';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import type { PlateController, PlateState } from './plate-controller';
 import { itemEstimate, parsePlateQuantity, plateable, plateEstimate, plateStep, PLATE_MAX, sourceId, sourceName, sourceUnit, unitLabel,
@@ -79,6 +79,25 @@ function PlateBar({ state, onOpen }: { state: PlateState; onOpen: () => void }) 
   </Animated.View>;
 }
 
+function PlateReviewActions({ label, saving, locked, blocked, onRegister, onEmpty }: {
+  label: string; saving: boolean; locked: boolean; blocked: boolean; onRegister: () => void; onEmpty?: () => void;
+}) {
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const { fontScale } = useWindowDimensions();
+  const stacked = fontScale > 1.3;
+  return <GlassSurface interactive style={[styles.bar, styles.reviewActions, stacked && styles.reviewActionsStacked]} testID="plate-review-actions">
+    <View style={stacked ? styles.reviewMainStacked : styles.fill}>
+      <SaveButton capsule numeric label={label} state={saving ? 'saving' : 'idle'} disabled={blocked} testID="plate-register" onPress={onRegister} />
+    </View>
+    {onEmpty ? <GlassSurface interactive style={styles.emptyCircle}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Vaciar plato" accessibilityState={{ disabled: locked }}
+        disabled={locked} onPress={onEmpty} style={({ pressed }) => [styles.emptyButton, locked && styles.faded, pressedStyle(pressed, reduced)]}>
+        <AppIcon name="trash" color={colors.textMuted} size={20} />
+      </Pressable>
+    </GlassSurface> : null}
+  </GlassSurface>;
+}
+
 /**
  * «Plato»: a meal built from the person's own foods (by quantity) and saved meals (by portions) — a merienda of bread,
  * cream cheese and a yogurt they already saved — registered as ONE meal with its total. The lists come first (search,
@@ -147,6 +166,9 @@ export function PlateEditor({ controller, state, externalLocked = false }: { con
     subtitle={review ? count(draft.items.length) : draft.items.length ? undefined : 'Elegí qué va en el plato'}
     onClose={review && !state.intent ? () => controller.showPicker() : () => controller.close()} onDismiss={() => controller.close()} back={review && !state.intent}
     dismissable={!running} running={running} testID="plate-editor"
+    reviewFooter={review ? <PlateReviewActions saving={saving} locked={locked} blocked={locked || !state.preview || state.previewLoading}
+      label={`Registrar plato${confirmed ? ` · ${shown(confirmed.calories)} kcal` : estimate?.calories != null ? ` · ${shown(estimate.calories)} kcal` : ''}`}
+      onRegister={() => void controller.save()} onEmpty={state.intent ? undefined : empty} /> : undefined}
     right={<MealDateControl date={state.date} disabled={locked} onChange={date => controller.changeDate(date)} />}>
     {review ? <>
       <TextInput accessibilityLabel="Nombre del plato" placeholder="Plato" placeholderTextColor={colors.textMuted} editable={!locked} value={draft.title} maxLength={140}
@@ -174,11 +196,6 @@ export function PlateEditor({ controller, state, externalLocked = false }: { con
       </View>
       <MealTiming date={state.date} value={draft} disabled={locked} onChange={(label, time, declared) => controller.timing(label, time, declared)} />
       {status}
-      <View style={shared.footer}>
-        <SaveButton state={saving ? 'saving' : 'idle'} disabled={locked || !state.preview || state.previewLoading} testID="plate-register"
-          label={`Registrar plato${confirmed ? ` · ${shown(confirmed.calories)} kcal` : estimate?.calories != null ? ` · ${shown(estimate.calories)} kcal` : ''}`} onPress={() => void controller.save()} />
-        {!state.intent ? <Button label="Vaciar plato" variant="quiet" disabled={locked} onPress={empty} /> : null}
-      </View>
     </> : null}
   </MealSheet>;
 }
@@ -200,6 +217,11 @@ const styles = StyleSheet.create({
   barWrap: { position: 'absolute', left: brandTokens.layout.screenPadding, right: brandTokens.layout.screenPadding, bottom: 24 },
   bar: { borderRadius: brandTokens.radius.tabBar, overflow: 'hidden' },
   barPress: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 18 },
+  reviewActions: { flexDirection: 'row', gap: brandTokens.space.xs, padding: brandTokens.space.xs, alignItems: 'center' },
+  reviewActionsStacked: { flexDirection: 'column', alignItems: 'flex-end' },
+  reviewMainStacked: { alignSelf: 'stretch' },
+  emptyCircle: { borderRadius: brandTokens.radius.full, overflow: 'hidden' },
+  emptyButton: { width: brandTokens.layout.buttonHeight, height: brandTokens.layout.buttonHeight, alignItems: 'center', justifyContent: 'center' },
   totals: { gap: 20 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
 });
