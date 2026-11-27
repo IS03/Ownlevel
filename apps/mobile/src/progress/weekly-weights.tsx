@@ -38,7 +38,7 @@ export function weeklyRows(weekly: BodyWeekly, today: string) {
 }
 
 /** Cuerpo → peso: the weeks of the period already read. Nothing is asked for here, and nothing is interpolated. */
-export function WeeklyWeights({ observations, period, today }: { observations: readonly { date: string; value: number }[]; period: { start: string; end: string }; today: string }) {
+export function WeeklyWeights({ observations, period, today, compactMethod = false }: { compactMethod?: boolean; observations: readonly { date: string; value: number }[]; period: { start: string; end: string }; today: string }) {
   const weekly = weeklyWeights(observations, period, today);
   const rows = weeklyRows(weekly, today);
   const left = weekly.outside.partialWeeks + weekly.outside.currentWeek;
@@ -46,10 +46,10 @@ export function WeeklyWeights({ observations, period, today }: { observations: r
     <AppText muted variant="footnote" accessibilityRole="header">Semana a semana</AppText>
     {rows.length ? rows.map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} spoken={row.spoken} />)
       : <AppText muted variant="footnote" testID="body-weekly-empty">Este período no tiene semanas completas ya cerradas.</AppText>}
-    <AppText muted variant="caption" style={styles.note}>
-      De lunes a domingo. La mediana necesita al menos {MIN_WEEKLY_WEIGH_INS} pesajes en la semana, y el cambio se calcula solo entre semanas seguidas. La semana en curso no entra.
-      {left ? ` ${weighIns(left)} del período ${left === 1 ? 'queda' : 'quedan'} fuera por caer en una semana incompleta o en curso.` : ''}
-    </AppText>
+    {!compactMethod || left > 0 ? <AppText muted variant="caption" style={styles.note}>
+      {compactMethod ? '' : `De lunes a domingo. La mediana necesita al menos ${MIN_WEEKLY_WEIGH_INS} pesajes en la semana, y el cambio se calcula solo entre semanas seguidas. La semana en curso no entra.`}
+      {left ? `${compactMethod ? '' : ' '}${weighIns(left)} del período ${left === 1 ? 'queda' : 'quedan'} fuera por caer en una semana incompleta o en curso.` : ''}
+    </AppText> : null}
   </View>;
 }
 

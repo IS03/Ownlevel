@@ -30,7 +30,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate, back: mockBack, replace: mockReplace, canGoBack: () => mockCanGoBack }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate, back: mockBack, replace: mockReplace, setParams: jest.fn(), canGoBack: () => mockCanGoBack }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileApiClient;
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockActiveClient }) }));
@@ -129,7 +129,7 @@ it('opens the measures entry directly, without the weight summary, and reaches t
   fireEvent.press(view.getByRole('button', { name: /^Cintura, 88 cm,/ }));
   await flush();
   fireEvent(view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'body-zone-sheet-modal')!, 'dismiss');
-  expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist' } });
+  expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist', fromBodyMeasures: '1' } });
 });
 const defs = [
   { id: ids.steps, systemKey: 'steps', name: 'Pasos', unit: 'pasos', valueType: 'integer' as const, isActive: true, currentTarget: 10000 },
@@ -310,7 +310,7 @@ describe('Progress Overview', () => {
 });
 
 describe('Body Trends', () => {
-  it('values inside the period, a dot per real record (imported flagged), the other measures as rows', async () => {
+  it('shows the weight period, marks real records and opens their originals', async () => {
     const view = wrap(<BodyTrendsScreen />); await flush();
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, null);
     const summary = within(view.getByTestId('body-trend-summary'));
@@ -325,23 +325,49 @@ describe('Body Trends', () => {
     expect(within(view.getByTestId('body-point-inspection')).getByText('Peso · 81 kg')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Ver registro original' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/body', params: { date: '2026-09-20', bodyChartReturn: '1', bodyChartMetric: '' } });
-    // Each measure opens on its own screen, so Back returns to the weight.
-    fireEvent.press(view.getByTestId('body-zone-Tronco'));
-    fireEvent.press(view.getByRole('button', { name: /^Cintura, 88 cm,/ }));
-    await flush();
-    fireEvent(view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'body-zone-sheet-modal')!, 'dismiss');
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist' } });
-    // The records to correct sit right under the weight, and one floating "+" loads a new one here.
-    expect(view.getByRole('button', { name: 'Tu cuaderno · peso y medidas por fecha' })).toBeTruthy();
+    expect(view.queryByTestId('body-zones')).toBeNull();
+    expect(view.getByRole('button', { name: 'Tu cuaderno' })).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Cómo se calcula' }));
+    expect(view.getByText(/escalas distintas/)).toBeTruthy();
+    expect(view.getByText(/lunes a domingo/)).toBeTruthy();
+  });
+  it('remembers the chosen tab and opens the correct editor, without mixing accounts', async () => {
+    mockActiveClient = {} as MobileApiClient;
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    fireEvent.press(view.getByRole('radio', { name: 'Medidas' }));
+    expect(view.queryByTestId('body-trend-chart')).toBeNull();
+    expect(view.getByRole('button', { name: 'Tu cuaderno' })).toBeTruthy();
     fireEvent.press(view.getByTestId('body-add-menu'));
-    fireEvent.press(view.getByTestId('body-add-measurement')); await flush();
     expect(view.getByTestId('body-measurement-sheet')).toBeTruthy();
+    view.unmount();
+    const revisited = wrap(<BodyTrendsScreen />); await flush();
+    expect(revisited.getByRole('radio', { name: 'Medidas' }).props.accessibilityState.checked).toBe(true);
+    mockOwner = 'another-owner';
+    revisited.rerender(wrapped(<BodyTrendsScreen />)); await flush();
+    expect(revisited.getByRole('radio', { name: 'Peso' }).props.accessibilityState.checked).toBe(true);
+  });
+  it.each([['peso', 'Peso', 'body-weight-sheet'], ['medidas', 'Medidas', 'body-measurement-sheet']])('opens registrar=%s directly on the correct tab', async (registrar, label, sheet) => {
+    mockParams = { registrar };
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(view.getByRole('radio', { name: label }).props.accessibilityState.checked).toBe(true);
+    expect(view.getByTestId(sheet)).toBeTruthy();
+  });
+  it('opens the journal without tabs, and gives a direct measurement link a path back to Medidas', async () => {
+    mockParams = { section: 'journal' };
+    const journal = wrap(<BodyTrendsScreen />); await flush();
+    expect(journal.getByTestId('body-journal')).toBeTruthy();
+    expect(journal.queryByRole('radio', { name: 'Peso' })).toBeNull();
+    journal.unmount();
+    mockCanGoBack = false;
+    mockParams = { metric: 'body.waist' };
+    const detail = wrap(<BodyTrendsScreen />); await flush();
+    fireEvent.press(detail.getByTestId('progress-back'));
+    expect(mockReplace).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { section: 'measures' } });
   });
   it('starts capture in the selected measure zone without borrowing earlier values', async () => {
     mockParams = { metric: 'body.thigh_right' };
     const view = wrap(<BodyTrendsScreen />); await flush();
     fireEvent.press(view.getByTestId('body-add-menu'));
-    fireEvent.press(view.getByTestId('body-add-measurement'));
     expect(view.getByTestId('body-region-thighs').props.accessibilityState.expanded).toBe(true);
     expect(view.getByLabelText('Muslo derecho').props.value).toBe('');
     expect(view.getByLabelText('Muslo izquierdo').props.value).toBe('');
@@ -457,14 +483,14 @@ describe('Body Trends', () => {
     mockBodyWeights = [{ date: '2026-10-02', weightKg: 0 }];
     mockBody.mockResolvedValue(ok({ ...body(), metrics: [] }));
     const view = wrap(<BodyTrendsScreen />); await flush();
-    expect(view.getByText(/No hay pesos ni medidas válidos/)).toBeTruthy();
+    expect(view.getByText(/No hay pesos válidos/)).toBeTruthy();
     expect(view.getByLabelText('Peso del 2 oct 2026: 0 kg. No cuenta: no es un peso')).toBeTruthy();
     expect(view.queryByTestId('body-trend-chart')).toBeNull();
     view.unmount(); clearConfirmedReads(mockClient);
     mockBody.mockResolvedValue(lost);
     const failed = wrap(<BodyTrendsScreen />); await flush();
     expect(failed.getByText('No pudimos cargar Cuerpo')).toBeTruthy();
-    expect(failed.queryByText(/No hay pesos ni medidas válidos/)).toBeNull();
+    expect(failed.queryByText(/No hay pesos válidos/)).toBeNull();
   });
   it('keeps dates across a year boundary and the exact custom period and A/B when opening an imported source', async () => {
     const data = body(), m = data.metrics[0];
@@ -487,12 +513,11 @@ describe('Body Trends', () => {
     expect(view.queryByTestId('body-trend-chart')).toBeNull();
     expect(view.queryByText('Peso · 80,5 kg')).toBeNull();
   });
-  it('does not reuse a selected date across different measures when the root default changes after a write', async () => {
+  it('does not replace missing weight with a circumference on the Peso tab', async () => {
     const first = body(); first.metrics = [first.metrics[1]];
     mockBody.mockResolvedValue(ok(first));
     const view = wrap(<BodyTrendsScreen />); await flush();
-    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-15-mark'));
-    expect(view.getByText('Cintura · 88 cm')).toBeTruthy();
+    expect(view.queryByTestId('body-trend-chart')).toBeNull();
     const next = body(); next.metrics[0].observations.splice(1, 0, obs('2026-09-15', 85));
     mockBody.mockResolvedValue(ok(next));
     act(() => invalidateConfirmedReads(mockClient, '/api/mobile/v1/body/weights/2026-09-15')); await flush();
@@ -577,7 +602,7 @@ describe('Body Trends', () => {
     const summary = within(view.getByTestId('body-trend-summary'));
     expect(summary.getByLabelText('Último registro: 80,5 kg, 1 oct')).toBeTruthy();
     expect(summary.getByLabelText('Cambio en octubre: bajó 1,5 kg, desde 82 kg el 10 sep')).toBeTruthy();
-    const value = summary.getByText('80,5 kg');
+    const value = within(view.getByTestId('body-trend-figures')).getByText('80,5 kg');
     expect(value.props.numberOfLines).toBeUndefined(); expect(value.props.adjustsFontSizeToFit).not.toBe(true);
     const long = body(); const weight = long.metrics[0];
     weight.last = { ...weight.last!, value: 111.8 }; weight.observations = weight.observations.map(o => o.date === weight.last!.date ? { ...o, value: 111.8 } : o); weight.change = -12.2;

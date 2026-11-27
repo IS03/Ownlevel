@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, ScrollView, View } from 'react-native';
 import { haptics } from '@/platform/haptics';
-import { BodyAddMenu } from '@/body/body-add-menu';
 import { BodyEditors, BodyStatus, MeasurementRecords, WeightRecords, openTodayWeight, useMeasurementEntry, useWeightEntry } from '@/body/body-screen';
 import { useBodyController } from '@/body/use-body-controller';
 import { useMobileAuth } from '@/auth';
 import { BODY_MEASUREMENT_FIELDS, type BodyMeasurementField } from '@/api/body';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
+import type { MobileApiClient } from '@/api/client';
 import { fetchProgressBody, progressRequestKey, type ProgressBody, type ProgressBodyMetric } from '@/api/progress';
-import { LinkRow, AppText, Button, Chip, ChipGroup, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppSheet, AppText, Button, Chip, GlassSurface, Heading, InlineUnavailable, SegmentedControl, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { useNutritionStages } from '@/stages/stages-provider';
 import { chartBands } from './stages-model';
-import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { FittedChart } from './fitted-chart';
-import { BODY_CHOICES, BodyJournal, BodyMetricPicker, BodyRecordComparison, BodyZones } from './body-atlas';
+import { BODY_CHOICES, BodyJournal, BodyRecordComparison, BodyZones } from './body-atlas';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
 import { PROGRESS_UNITS, addDays, progressRange, periodHeading, shortRange, type ProgressUnit } from './progress-range';
@@ -27,6 +26,8 @@ import { BodyTimelineContext } from './body-context';
 import { formatBodyDate } from '@/body/body-model';
 import { bodyObservationHref, isBodyChartMetric } from './body-chart-navigation';
 import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
+import { MIN_WEEKLY_WEIGH_INS } from '../../../../src/lib/progress/body-evolution/weekly';
+import { SHORT_BODY_INTERVAL_DAYS } from './body-context-model';
 import { PortadaPointNote, sameValue, usePortadaPoint, type PortadaPoint } from './portada-point';
 
 const validBodyValue = (value: number) => Number.isFinite(value) && value > 0;
@@ -109,33 +110,34 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
     </> : safeSummary && count === 2 ? <AppText muted variant="footnote">Dos registros: muestran una diferencia, todavía con evidencia limitada.</AppText> : null}
     {bands.length ? <View style={styles.chips}><Chip kind="toggle" label="Etapas" selected={showStages} onPress={() => setShowStages(v => !v)} /></View> : null}
     {portada ? <PortadaPointNote point={portada.point} matched={portada.matched} reason="No hay en este período un pesaje con esa fecha y ese valor: no seleccionamos otro en su lugar." /> : null}
-    <FittedChart testID="body-trend-chart" unit={metric.unit} mode="dots" connect range={chartRange}
+    <FittedChart testID="body-trend-chart" unit={metric.unit} mode="dots" connect showScale={false} showExtrema range={chartRange}
       bands={showStages ? bands.map(b=>({start:b.start<chartRange.start?chartRange.start:b.start,end:b.end&&b.end<=chartRange.end?addDays(b.end,-1):chartRange.end,label:b.label})).filter(b=>b.start<=b.end) : []}
       selectedKey={point?.date ?? null} onSelect={date=>onSelect(date===selectedDate?null:date)} points={[...metric.observations].sort((a,b)=>a.date.localeCompare(b.date)).map(o=>({
         key:o.date,start:o.date,end:o.date,value:valid(o.value)?o.value:null,kind:valid(o.value)?'mark':'gap',
         text:`${formatBodyDate(o.date)}, ${formatValue(o.value,metric.unit)}${o.provenanceLabel?` · ${o.provenanceLabel}`:''}`,
       }))} />
     <View style={styles.section} testID="body-point-inspection">
-      <View accessible accessibilityLiveRegion="polite" accessibilityLabel={point ? `${formatBodyDate(point.date)}, ${metric.label}, ${formatValue(point.value, metric.unit)}, ${provenance}${valid(point.value) ? '' : ', registro no válido'}` : 'Tocá un punto para consultar su fecha, valor y procedencia.'}>
+      <View accessible accessibilityLiveRegion="polite" accessibilityLabel={point ? `${formatBodyDate(point.date)}, ${metric.label}, ${formatValue(point.value, metric.unit)}, ${provenance}${valid(point.value) ? '' : ', registro no válido'}` : undefined}>
         {point ? <>
           <AppText variant="headline">{formatBodyDate(point.date)}</AppText>
           <AppText numeric>{`${metric.label} · ${formatValue(point.value, metric.unit)}`}</AppText>
           <AppText muted variant="caption">{provenance}</AppText>
-        </> : <AppText muted variant="footnote">Tocá un punto para ver su fecha y de dónde viene.</AppText>}
+        </> : null}
       </View>
       {point && !valid(point.value) ? <AppText muted variant="caption">Registro no válido como {metric.key === 'body.weight' ? 'peso corporal' : 'medida corporal'}. Podés corregirlo o borrarlo en el original.</AppText> : null}
       {selectedDate && !point ? <AppText muted variant="caption">No hay un registro corporal en esa fecha. Elegí un punto del gráfico para ver el original.</AppText> : null}
       {original ? <LinkRow label="Ver registro original" onPress={() => router.push(original)} /> : null}
-      <AppText muted numeric variant="caption">{count} {count === 1 ? 'registro válido' : 'registros válidos'} en el período{invalid.length ? ` · ${invalid.length} no válido${invalid.length === 1 ? '' : 's'}` : ''}.</AppText>
+
     </View>
     {counted.length ? <AppText muted numeric variant="caption" testID="body-trend-zero">
       {counted.length === 1 ? `El pesaje del ${day(counted[0]!)} está en 0 kg` : `${counted.length} pesajes están en 0 kg`}: no es un peso corporal válido. Esta lectura antigua no permite mostrar su cambio ni tendencia.
     </AppText> : left.length ? <AppText muted numeric variant="caption" testID="body-trend-zero">
       {left.length === 1 ? `El pesaje del ${day(left[0]!)} está en 0 kg` : `${left.length} pesajes están en 0 kg`}: no es un peso, así que no cuenta en el gráfico ni en el cambio. Podés corregirlo o borrarlo en tus pesajes.
     </AppText> : null}
-    {trendNote || excluded > 0 ? <AppText muted variant="caption">
-      {trendNote}{excluded > 0 ? `${trendNote ? ' ' : ''}${excluded} medición sospechosa excluida; podés corregirla en Cuerpo.` : ''}
-    </AppText> : null}
+    <AppText muted numeric variant="caption">
+      {count} {metric.key === 'body.weight' ? count === 1 ? 'pesaje' : 'pesajes' : count === 1 ? 'medición' : 'mediciones'}{invalid.length ? ` válidos · ${invalid.length} no válido${invalid.length === 1 ? '' : 's'}` : ''}{trendNote ? ` · ${metric.trend === 'variable' && metric.confidence !== 'limited' ? 'sin dirección clara' : trendNote.replace(/\.$/, '')}` : ''}
+    </AppText>
+    {excluded > 0 ? <AppText muted numeric variant="caption">{excluded} {excluded === 1 ? 'medición sospechosa excluida; podés corregirla' : 'mediciones sospechosas excluidas; podés corregirlas'} en Cuerpo.</AppText> : null}
   </View>;
 }
 
@@ -146,80 +148,103 @@ function recordField(key: string): BodyMeasurementField | undefined {
 }
 
 type Body = NonNullable<ReturnType<typeof useBodyController>>;
-/** The weight (or the measure you opened) on top, its records under it; on the main screen, every other measure one tap away. */
-function Content({ data, selected, body, selectedDate, onSelect, portada }: { data: ProgressBody; selected: string | null; body: Body | null;
-  selectedDate: string | null; onSelect: (date: string | null) => void; portada: { point: PortadaPoint; matched: boolean } | null }) {
-  const router = useRouter();
+type BodyTab = 'weight' | 'measures';
+const TAB_OPTIONS = [{ label: 'Peso', value: 'weight' }, { label: 'Medidas', value: 'measures' }] as const;
+const RECORD_OPTIONS = [{ label: 'Pesajes', value: 'records' }, { label: 'Semanas', value: 'weeks' }] as const;
+const BODY_ROUTE = '/(tabs)/progress/trends/body' as const;
+// A session can change accounts without restarting the app. Never use a previous owner's choice.
+const lastBodyTab = new WeakMap<MobileApiClient, { owner: string; tab: BodyTab }>();
+
+function BodyMethod({ weight }: { weight: boolean }) {
+  const [open, setOpen] = useState(false);
   const { colors } = useOwnlevelTheme();
-  const { fontScale } = useWindowDimensions();
-  const [reading, setReading] = useState<'records' | 'weeks'>('records');
-  const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
-  const editable = !!body?.state.read.overview && body.state.read.status === 'ready' && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
-  const metric = selected ? data.metrics.find(m => m.key === selected) : data.metrics.find(m => m.key === 'body.weight') ?? data.metrics[0];
-  if (!metric) return <View style={styles.section}>
-    <AppText muted>{selected ? 'Esta medida no está disponible en esta lectura.' : 'No hay pesos ni medidas válidos registrados con fecha en esta lectura.'}</AppText>
-    {data.excludedSuspect > 0 ? <AppText muted>{data.excludedSuspect} mediciones sospechosas excluidas; los originales siguen en Cuerpo.</AppText> : null}
-    {!selected ? <>
-      <BodyRecordComparison metrics={data.metrics} today={data.today} />
-      <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
-      <LinkRow label="Explorar peso y medidas" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
-      <LinkRow label="Tu cuaderno · peso y medidas por fecha" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
-    </> : null}
-    {body?.state.read.overview ? <>
-      <WeightRecords state={body.state} controller={body.controller} editable={body.state.phase === 'idle' && !body.state.intent && !body.state.editor} />
-      <MeasurementRecords state={body.state} controller={body.controller} editable={body.state.phase === 'idle' && !body.state.intent && !body.state.editor} />
-    </> : null}
-  </View>;
-
-  const field = recordField(metric.key);
   return <>
-    {selected ? null : <Heading level={2}>{metric.label}</Heading>}
-    <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Selected selectedDate={selectedDate} onSelect={onSelect} routeMetric={selected} metric={metric} portada={metric.key === 'body.weight' ? portada : null} excluded={data.excludedSuspect} storedZeros={metric.key === 'body.weight' ? (body?.state.read.weights ?? [])
-      .filter(row => row.weightKg <= 0 && row.date >= data.period.start && row.date <= data.period.end).map(row => row.date) : []} /></View>
-    {selected && (metric.key !== 'body.weight' || reading === 'records') ? <BodyTimelineContext range={data.period} metric={metric} selectedDate={selectedDate} onSelect={onSelect} /> : null}
-    {selected ? <>
-      <BodyRecordComparison key={metric.key} metrics={[metric]} today={data.today} />
-    </> : null}
-    {selected && metric.key === 'body.weight' ? <Selector accessibilityLabel="Leer registros de peso" value={reading} options={[{ label: 'Pesajes', value: 'records' }, { label: 'Semanas', value: 'weeks' }]} onChange={setReading} /> : null}
-    {/* The weeks of the weights this read already brought: no other request. Body weight, never a lifted load. */}
-    {selected && reading === 'weeks' && metric.key === 'body.weight' ? <WeeklyWeights observations={metric.observations} period={data.period} today={data.today} /> : null}
-    {selected && (metric.key !== 'body.weight' || reading === 'records') && body?.state.read.overview ? <View style={styles.section} testID="body-trend-records">
-      <AppText muted variant="footnote">{metric.key === 'body.weight' ? 'Tus pesajes · tocá uno para corregirlo' : 'Tus mediciones · tocá una para corregirla'}</AppText>
-      {metric.key === 'body.weight' ? <WeightRecords state={body.state} controller={body.controller} editable={editable}  />
-        : <MeasurementRecords state={body.state} controller={body.controller} editable={editable} field={field} />}
+    <LinkRow label="Cómo se calcula" onPress={() => setOpen(true)} />
+    {open ? <AppSheet onClose={() => setOpen(false)} testID="body-method" closeLabel="Cerrar cómo se calcula" style={{ backgroundColor: colors.background, maxHeight: '85%' }}>
+      <ScrollView contentContainerStyle={styles.method}>
+        <Heading level={2}>Cómo se calcula</Heading>
+        <AppText variant="headline">Gráfico</AppText>
+        <AppText muted>Solo usamos los registros válidos de cada fecha. Cuando comparás períodos, el gráfico muestra únicamente los puntos del período elegido.</AppText>
+        <AppText variant="headline">Ver junto a…</AppText>
+        <AppText muted>Las comidas se promedian por día cerrado con dato. Suma lo que registraste, que puede no ser todo lo que comiste. Mismo período, escalas distintas. Mirarlos juntos no demuestra una relación causal.</AppText>
+        <AppText variant="headline">Comparar dos registros</AppText>
+        <AppText muted>Cada valor es el de esa fecha: no completamos huecos con registros anteriores. Con menos de {SHORT_BODY_INTERVAL_DAYS} días, la diferencia describe esas dos fechas.</AppText>
+        {weight ? <AppText muted>El cambio equivalente por semana es la diferencia repartida según la cantidad de días entre pesajes.</AppText> : <AppText muted>Una medida puede variar algunos milímetros según cómo te medís. El contorno no separa músculo de grasa.</AppText>}
+        <AppText variant="headline">Qué registraste entre esas fechas</AppText>
+        <AppText muted>Excluimos los días de ambas mediciones porque no conocemos su hora. Estos registros acompañan el cambio observado y no explican su causa.</AppText>
+        <AppText muted>La duración del entrenamiento incluye descansos. Cada ejercicio suma a un solo grupo. El contorno de pecho incluye la espalda. No hay medida de hombros.</AppText>
+        {weight ? <>
+          <AppText variant="headline">Pesajes por semana</AppText>
+          <AppText muted>Tomamos semanas completas de lunes a domingo, con al menos {MIN_WEEKLY_WEIGH_INS} pesajes para calcular la mediana. El cambio se calcula solo entre semanas seguidas. La semana en curso queda fuera.</AppText>
+        </> : null}
+      </ScrollView>
+    </AppSheet> : null}
+  </>;
+}
 
+function Content({ data, selected, body, editable, selectedDate, onSelect, portada }: { data: ProgressBody; selected: string | null; body: Body | null;
+  editable: boolean; selectedDate: string | null; onSelect: (date: string | null) => void; portada: { point: PortadaPoint; matched: boolean } | null }) {
+  const { colors } = useOwnlevelTheme();
+  const [reading, setReading] = useState<'records' | 'weeks'>('records');
+  const key = selected ?? 'body.weight';
+  const weight = key === 'body.weight';
+  const metric = data.metrics.find(m => m.key === key);
+  const field = recordField(key);
+  const showRecords = !weight || reading === 'records' || !metric;
+  return <>
+    {metric ? <>
+      <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Selected selectedDate={selectedDate} onSelect={onSelect} routeMetric={selected} metric={metric} portada={portada} excluded={data.excludedSuspect} storedZeros={weight ? (body?.state.read.weights ?? [])
+          .filter(row => row.weightKg <= 0 && row.date >= data.period.start && row.date <= data.period.end).map(row => row.date) : []} />
+      </View>
+      <BodyTimelineContext range={data.period} metric={metric} selectedDate={selectedDate} onSelect={onSelect} />
+      {weight ? <BodyRecordComparison metrics={[metric]} today={data.today} /> : null}
+      {weight ? <SegmentedControl accessibilityLabel="Leer registros de peso" value={reading} options={RECORD_OPTIONS} onChange={setReading} /> : null}
+      {!showRecords ? <WeeklyWeights observations={metric.observations} period={data.period} today={data.today} compactMethod /> : null}
+    </> : <AppText muted>{selected ? 'Esta medida no está disponible en esta lectura.' : 'No hay pesos válidos registrados con fecha en esta lectura.'}</AppText>}
+    {showRecords && body?.state.read.overview ? <View style={styles.section} testID="body-trend-records">
+      {weight ? <WeightRecords state={body.state} controller={body.controller} editable={editable} /> : field
+        ? <MeasurementRecords state={body.state} controller={body.controller} editable={editable} field={field} /> : null}
     </View> : null}
-    {!selected ? <>
-      {/* Opens the weight on its own: every weighing and its weeks. The measures are the zones right below. */}
-      <LinkRow label="Ver tus pesajes y semanas" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
-      <BodyRecordComparison metrics={data.metrics} today={data.today} />
-      <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
-      <LinkRow label="Tu cuaderno · peso y medidas por fecha" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
-    </> : null}
-
   </>;
 }
 
 /** Body atlas and per-measure exploration share the confirmed period read and the existing write controller. */
 function BodyTrends() {
   const { client } = useMobileApi();
+  const router = useRouter();
+  const reduced = useReduceMotion();
   const { session } = useMobileAuth();
   const { colors } = useOwnlevelTheme();
   const { query, compare } = useProgressRange();
-  const params = useLocalSearchParams<{ metric?: string; registrar?: string; insightsReturn?: string; section?: string }>();
-  const selected = typeof params.metric === 'string' && params.metric ? params.metric : null;
-  const measuresOnly = params.section === 'measures' && !selected;
+  const params = useLocalSearchParams<{ metric?: string; registrar?: string; insightsReturn?: string; section?: string; fromBodyMeasures?: string }>();
+  const point = usePortadaPoint();
+  const owner = session?.user.id ?? 'anonymous';
+  const selected = params.metric === 'body.weight' || isBodyChartMetric(params.metric) ? params.metric : null;
+  const detail = selected && selected !== 'body.weight' ? selected : null;
+  const journal = params.section === 'journal' && !selected;
+  const routeTab = detail || params.registrar === 'medidas' || params.section === 'measures' ? 'measures'
+    : selected || params.registrar === 'peso' || point ? 'weight' : null;
+  const remembered = client ? lastBodyTab.get(client) : undefined;
+  const initialTab = routeTab ?? (remembered?.owner === owner ? remembered.tab : 'weight');
+  const [selection, setSelection] = useState<{ owner: string; client: typeof client; routeTab: BodyTab | null; tab: BodyTab }>({ owner, client, routeTab, tab: initialTab });
+  const accountChanged = selection.owner !== owner || selection.client !== client;
+  const tab = accountChanged ? initialTab : routeTab && routeTab !== selection.routeTab ? routeTab : selection.tab;
+  if (accountChanged || selection.routeTab !== routeTab) setSelection({ owner, client, routeTab, tab });
+  const switchTab = (next: BodyTab) => {
+    haptics.selection();
+    if (client) lastBodyTab.set(client, { owner, tab: next });
+    setSelection({ owner, client, routeTab, tab: next });
+  };
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressBody(c, query, signal, compare), [query, compare]);
   const readKey = progressRequestKey(query, compare);
   const { state, data, refresh } = useCachedRead(client, 'body', readKey, load);
-  const visibleMetric = selected ?? (data?.metrics.find(m => m.key === 'body.weight') ?? data?.metrics[0])?.key ?? 'body.weight';
-  const scope = `${readKey}|${selected ?? ''}|${visibleMetric}`;
-  const point = usePortadaPoint();
+  const scope = `${readKey}|${journal ? 'journal' : detail ?? tab}`;
   // `fromPortada`: the scope this screen opened with and nothing touched yet; anything else retires the portada point.
   const [inspection, setInspection] = useState({ client, owner: session?.user.id, scope, date: null as string | null, fromPortada: true });
   const sameScope = inspection.client === client && inspection.owner === session?.user.id && inspection.scope === scope;
   if (!sameScope) setInspection({ client, owner: session?.user.id, scope, date: null, fromPortada: false });
-  const portadaPoint = sameScope && inspection.fromPortada && !selected ? point : null;
+  const portadaPoint = sameScope && inspection.fromPortada && tab === 'weight' && !detail && !journal ? point : null;
   // The spark shows the last weighing of its interval: the same observation here is the last valid one in those dates,
   // with that value. Nothing else is selected in its place.
   const weight = data?.metrics.find(m => m.key === 'body.weight');
@@ -238,31 +263,50 @@ function BodyTrends() {
     if (overview && seen.current && overview !== seen.current) void refresh();
     seen.current = overview;
   }, [overview, refresh]);
-  const title = params.section === 'journal' && !selected ? 'Tu cuaderno' : measuresOnly ? 'Medidas' : selected ? BODY_CHOICES.find(m => m.key === selected)?.label ?? data?.metrics.find(m => m.key === selected)?.label ?? 'Cuerpo' : 'Cuerpo';
+  const title = journal ? 'Tu cuaderno' : detail ? BODY_CHOICES.find(m => m.key === detail)?.label ?? 'Cuerpo' : 'Cuerpo';
   const editable = !!body?.state.read.overview && body.state.read.status === 'ready' && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
-  return <><ProgressScroll periodPickerTestID="body-period-picker" compactPeriod title={title} testID="body-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
-    onRefresh={() => { void refresh(); void body?.controller.load(); }} tintColor={colors.primary} />}>
+  const measure = tab === 'measures' || !!detail;
+  const register = () => {
+    if (!body || !editable) return;
+    haptics.selection();
+    if (measure) body.controller.openMeasurement();
+    else openTodayWeight(body.state, body.controller);
+  };
+  const backToMeasures = detail ? () => {
+    if (params.fromBodyMeasures === '1' && router.canGoBack()) router.back();
+    else router.replace({ pathname: BODY_ROUTE, params: { section: 'measures' } });
+  } : undefined;
+  return <><ProgressScroll periodPickerTestID="body-period-picker" compactPeriod title={title} testID="body-trends-screen" onBack={backToMeasures}
+    bottomDock={body && !journal ? <Pressable accessibilityRole="button" accessibilityLabel={measure ? 'Registrar medidas' : 'Registrar peso'}
+      testID="body-add-menu" disabled={!editable} onPress={register}
+      style={({ pressed }) => [pressedStyle(pressed, reduced), !editable && styles.addDisabled]}>
+      <GlassSurface interactive tint={colors.brandSubtle} style={styles.add}>
+        <AppIcon name="plus" color={colors.primary} />
+      </GlassSurface>
+    </Pressable> : null}
+    refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
+      onRefresh={() => { void refresh(); void body?.controller.load(); }} tintColor={colors.primary} />}>
     <ReturnToInsights />
-    {selected && !isBodyChartMetric(selected) ? <AppText muted>La medida del enlace no es válida.</AppText> : null}
-    {/* Insights reads the weight of a day: it says nothing about when you weighed in, before or after training. */}
+    {params.metric && !isBodyChartMetric(params.metric) ? <AppText muted>La medida del enlace no es válida.</AppText> : null}
     {params.insightsReturn === '1' ? <AppText muted variant="footnote" testID="body-from-insights">El peso de un día no dice si te pesaste antes o después de entrenar.</AppText> : null}
-    {selected && isBodyChartMetric(selected) ? <BodyMetricPicker selected={selected} /> : null}
+    {!detail && !journal ? <SegmentedControl accessibilityLabel="Qué querés ver en Cuerpo" value={tab} options={TAB_OPTIONS} onChange={switchTab} /> : null}
     {body ? <BodyStatus state={body.state} controller={body.controller} /> : null}
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? <UnavailableState title="No pudimos cargar Cuerpo" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
         {state.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void refresh()} /> : null}
-        {params.section === 'journal' && !selected ? <BodyJournal key={`${session?.user.id}|${readKey}`} data={data} /> : measuresOnly ? <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} /> : <Content key={`${session?.user.id}|${readKey}|${selected ?? ''}`} data={data} selected={selected} body={body} selectedDate={selectedDate} onSelect={onSelect} portada={portadaPoint ? { point: portadaPoint, matched: !!match } : null} />}
+        {journal ? <BodyJournal key={`${owner}|${readKey}`} data={data} /> : <>
+          {tab === 'measures' && !detail ? <>
+            <BodyZones data={data} onRegister={body ? register : undefined} disabled={!editable} />
+            <BodyRecordComparison key={`${owner}|${readKey}|measures`} metrics={data.metrics.filter(m => m.key !== 'body.weight')} today={data.today} />
+          </> : <Content key={`${owner}|${scope}`} data={data} selected={selected} body={body} editable={editable} selectedDate={selectedDate} onSelect={onSelect} portada={portadaPoint ? { point: portadaPoint, matched: !!match } : null} />}
+          {!detail ? <LinkRow label="Tu cuaderno" onPress={() => router.push({ pathname: BODY_ROUTE, params: { section: 'journal' } })} /> : null}
+          <BodyMethod key={scope} weight={!measure} />
+        </>}
       </>}
-    <View style={styles.fabRoom} />
   </ProgressScroll>
-  {body ? <>
-    <BodyAddMenu disabled={!editable} actions={[
-      { key: 'weight', label: 'Registrar peso', icon: 'scale', onPress: () => openTodayWeight(body.state, body.controller) },
-      { key: 'measurement', label: 'Registrar medidas', icon: 'ruler', onPress: () => body.controller.openMeasurement() },
-    ]} />
-    <BodyEditors state={body.state} controller={body.controller} initialField={selected ? recordField(selected) : undefined} />
-  </> : null}</>;
+  {body ? <BodyEditors state={body.state} controller={body.controller} initialField={detail ? recordField(detail) : undefined} /> : null}</>;
+
 }
 /** A link can bring a period along (from Insights, the month of a day or the days of a relation). It applies before the first read. */
 export function BodyTrendsScreen() {
@@ -282,5 +326,7 @@ const styles = StyleSheet.create({
   stackedDivider: { width: '100%', height: StyleSheet.hairlineWidth },
   reference: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth },
   link: { minHeight: 44, justifyContent: 'center' },
-  fabRoom: { height: 72 },
+  method: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
+  add: { width: brandTokens.layout.buttonHeight, height: brandTokens.layout.buttonHeight, borderRadius: radius.tabBar, justifyContent: 'center', alignItems: 'center' },
+  addDisabled: { opacity: 0.4 },
 });
