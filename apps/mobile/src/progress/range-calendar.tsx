@@ -12,8 +12,8 @@ const CELL = 40;
  * One month, Monday first, with up to two ranges painted (A champagne, B grey). Plain RN on purpose:
  * the native date picker selects single days and cannot paint two ranges. Days after `max` are disabled.
  */
-export function RangeCalendar({ month, onMonth, marks, max, onDay }: {
-  month: string; onMonth: (month: string) => void; marks: CalendarMark[]; max: string; onDay: (day: string) => void;
+export function RangeCalendar({ month, onMonth, marks, max, onDay, fixedWeeks = false }: {
+  month: string; onMonth: (month: string) => void; marks: CalendarMark[]; max: string; onDay: (day: string) => void; fixedWeeks?: boolean;
 }) {
   const { colors } = useOwnlevelTheme();
   // Rows grow with Dynamic Type so day numbers never overlap vertically; the numbers keep the user's size.
@@ -21,7 +21,7 @@ export function RangeCalendar({ month, onMonth, marks, max, onDay }: {
   const sized = { height: cell }, round = { width: cell - 6, height: cell - 6, borderRadius: (cell - 6) / 2 };
   const first = `${month.slice(0, 7)}-01`, offset = (new Date(`${first}T12:00:00Z`).getUTCDay() + 6) % 7;
   const days = Number(addDays(addMonths(first, 1), -1).slice(8));
-  const cells = Array.from({ length: Math.ceil((offset + days) / 7) * 7 }, (_, i) => i - offset + 1);
+  const cells = Array.from({ length: fixedWeeks ? 42 : Math.ceil((offset + days) / 7) * 7 }, (_, i) => i - offset + 1);
   const toneOf = (d: string) => {
     for (const m of marks) {
       const end = m.range.end ?? m.range.start;
@@ -42,7 +42,7 @@ export function RangeCalendar({ month, onMonth, marks, max, onDay }: {
       </View>
     </View>
     <View style={styles.row}>{WEEKDAYS.map(d => <View key={d} style={styles.cell}><AppText muted variant="caption">{d}</AppText></View>)}</View>
-    {Array.from({ length: cells.length / 7 }, (_, r) => <View key={r} style={styles.row}>{cells.slice(r * 7, r * 7 + 7).map((n, i) => {
+    {Array.from({ length: cells.length / 7 }, (_, r) => <View key={r} testID={`range-calendar-week-${r + 1}`} style={styles.row}>{cells.slice(r * 7, r * 7 + 7).map((n, i) => {
       if (n < 1 || n > days) return <View key={i} style={[styles.cell, sized]} />;
       const day = `${first.slice(0, 8)}${String(n).padStart(2, '0')}`, mark = toneOf(day), future = day > max;
       const band = mark ? (mark.tone === 'a' ? colors.brandSubtle : colors.surfaceRaised) : 'transparent';
