@@ -33,8 +33,8 @@ export const fetchProgressBody = (client: MobileApiClient, query: ProgressQuery,
   client.read({ path: `${BASE}/body?${qs(query, compare)}`, signal, parse: (raw: unknown) => {
     const data = parseProgressBody(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
   } });
-export const fetchProgressMetrics = (client: MobileApiClient, query: ProgressQuery, metricId: string | null, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  client.read({ path: `${BASE}/metrics?${qs(query, compare)}${metricId ? `&metric=${encodeURIComponent(metricId)}` : ''}`, signal, parse: (raw: unknown) => {
+export const fetchProgressMetrics = (client: MobileApiClient, query: ProgressQuery, metricId: string | null, signal?: AbortSignal, compare: ProgressCompareRange = null, background = false) =>
+  client.read({ path: `${BASE}/metrics?${qs(query, compare)}${metricId ? `&metric=${encodeURIComponent(metricId)}` : ''}`, signal, ...(background ? { background } : {}), parse: (raw: unknown) => {
     const data = parseProgressMetrics(raw);
     if (!data || !samePeriod(data.period, query, compare)) return undefined;
     // A different metric is only valid when the requested one no longer exists.

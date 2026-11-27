@@ -40,20 +40,28 @@ export function MetricTrendChart({ data, inspection, onOpen }: { data: ProgressM
     value: point.value === null ? 'Sin dato' : formatValue(point.value, m.unit, m.valueType),
     detail: `${bucket === 'day' ? 'Registro diario' : bucket === 'week' ? 'Promedio semanal' : 'Promedio mensual'} · ${point.samples} ${point.samples === 1 ? 'día con dato' : 'días con dato'}${point.key <= data.today && point.end >= data.today ? ' · Hoy sigue en curso' : ''}`,
   });
-  const overview: ChartReading = { title: 'Período completo', value: data.summary?.average == null ? '—' : formatValue(data.summary.average, m.unit, m.valueType), detail: data.summary ? `Promedio diario · ${data.summary.registeredDays} días con dato` : 'Tocá una barra para ver fecha y valor.' };
+  const overview: ChartReading = { title, value: '', detail: 'Fecha y valor' };
+  const bucketLabel = bucket === 'day' ? 'Registro diario' : bucket === 'week' ? 'Promedio semanal' : 'Promedio mensual';
+  const target = m.currentTarget === null ? null : formatValue(m.currentTarget, m.unit, m.valueType);
+  const values = data.series.flatMap(p => p.value === null ? [] : [p.value]);
+  const bound = (value: number) => formatValue(value, m.unit, m.valueType);
+  const scale = values.length || m.currentTarget !== null
+    ? `${bound(Math.min(0, m.currentTarget ?? 0, ...values))} – ${bound(Math.max(1, m.currentTarget ?? 0, ...values))}` : null;
   return <View style={styles.root}>
     <ChartReadout testID="metric-trend-readout" reading={selected ? reading(selected) : overview}
-      candidates={[overview, ...points.map(reading)]} accessibilityLabel={selected ? `${title}, ${detail}` : `${title}, ${overview.title}, ${overview.value}, ${overview.detail}`}
+      candidates={[overview, ...points.map(reading)]} accessibilityLabel={selected ? `${title}, ${detail}` : `${title}, para ver fecha y valor`}
       onClear={selected ? () => select(selected.key) : undefined} />
     <View accessibilityLabel="Gráfico de métricas">
-      <FittedChart testID="metric-trend-chart" label="Gráfico de métricas" mode="bars" currentTarget={m.currentTarget} valueType={m.valueType} unit={m.unit ?? undefined}
+      <FittedChart testID="metric-trend-chart" label="Gráfico de métricas" mode="bars" showScale={false} currentTarget={m.currentTarget} valueType={m.valueType} unit={m.unit ?? undefined}
         range={data.period} points={points.map(p => ({ ...p, start: p.key, kind: p.value === null ? 'gap' : p.value === 0 ? 'zero' : 'mark' }))}
         selectedKey={selected?.key ?? null} onSelect={select} />
     </View>
-    {m.currentTarget !== null ? <AppText muted variant="caption">Línea punteada · objetivo actual {formatValue(m.currentTarget, m.unit, m.valueType)}</AppText> : null}
+    <AppText muted variant="caption" testID="metric-trend-legend">{bucketLabel}{target ? ` · ╌ objetivo actual ${target}` : ''}</AppText>
     {onOpen ? <ChartOpenAction label={bucket === 'day' ? 'Abrir registro diario original' : 'Recorrer días del intervalo'}
       onPress={selected ? () => onOpen(selected.key, selected.end) : undefined} /> : null}
     <ChartExplanation>
+      {scale ? <AppText muted variant="footnote">Escala · {scale}</AppText> : null}
+      {data.period.includesToday ? <AppText muted variant="footnote">Hoy cuenta cuando termine el día.</AppText> : null}
       <AppText muted variant="footnote">Un día sin registro no cuenta como cero. El objetivo de la línea es el actual, no el histórico.</AppText>
       {bucket !== 'day' ? <AppText muted variant="footnote">Este promedio no es un registro diario. El agregado no identifica qué fechas aportaron; podés recorrer los días del intervalo.</AppText> : null}
     </ChartExplanation>
