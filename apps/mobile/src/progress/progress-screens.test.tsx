@@ -24,6 +24,7 @@ let mockParams: Record<string, string> = {};
 const mockOverview = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
 const mockBody = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
 const mockMetrics = jest.fn<(c: unknown, q: ProgressQuery, id: string | null, compare: DateRange | null) => Promise<unknown>>();
+const mockWarmMetric = jest.fn<(...args: Parameters<typeof mockMetrics>) => ReturnType<typeof mockMetrics>>();
 const mockReport = jest.fn<(c: unknown, q: unknown) => Promise<unknown>>();
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -57,7 +58,8 @@ jest.mock('@/body/use-body-controller', () => {
 jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progress'),
   fetchProgressOverview: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockOverview(c, q, compare),
   fetchProgressBody: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockBody(c, q, compare),
-  fetchProgressMetrics: (c: unknown, q: ProgressQuery, id: string | null, _s: unknown, compare: DateRange | null) => mockMetrics(c, q, id, compare) }));
+  fetchProgressMetrics: (c: unknown, q: ProgressQuery, id: string | null, _s: unknown, compare: DateRange | null, background?: boolean) =>
+    (background ? mockWarmMetric : mockMetrics)(c, q, id, compare) }));
 // Mis vistas has its own tests (my-views.test.tsx); here it is an empty list.
 jest.mock('@/api/progress-views', () => ({ ...jest.requireActual<object>('@/api/progress-views'),
   fetchProgressViews: async () => ({ status: 'ok', meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' },
@@ -156,7 +158,13 @@ beforeEach(() => {
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, l) => { listeners.push(l as (s: string) => void); return { remove: jest.fn() } as never; });
   mockOverview.mockImplementation(async (_c, q) => ok(overview({}, q.period)));
   mockBody.mockImplementation(async () => ok(body()));
-  mockMetrics.mockImplementation(async (_c, _q, id) => ok(metrics(id)));
+  const metricFixture = async (_c: unknown, _q: ProgressQuery, id: string | null, compare: DateRange | null) => {
+    const data = metrics(id);
+    if (compare) data.period = { ...data.period, previousStart: compare.start, previousEnd: compare.end };
+    return ok(data);
+  };
+  mockMetrics.mockImplementation(metricFixture);
+  mockWarmMetric.mockImplementation(metricFixture);
 });
 
 describe('Progress fixtures follow the shared contract', () => {
@@ -619,21 +627,24 @@ describe('Metrics Trends', () => {
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.steps, null);
     const summary = within(view.getByTestId('metric-trend-summary'));
     expect(summary.getByText('0 pasos')).toBeTruthy();
-    expect(summary.getByText('promedio del período por día con dato')).toBeTruthy(); expect(view.getByText('Línea punteada · objetivo actual 10.000 pasos')).toBeTruthy();
-    expect(summary.getByText('2 de 6')).toBeTruthy(); expect(summary.getByText('días con dato · pocos para un promedio')).toBeTruthy();
-    expect(view.queryByTestId('metric-trend-comparison')).toBeNull();
+    expect(summary.getByText('Promedio diario')).toBeTruthy();
+    expect(summary.getByText('2 de 6 días con dato · pocos para un promedio')).toBeTruthy();
+    expect(view.getByText('0 % del objetivo (10.000 pasos)')).toBeTruthy();
+    expect(view.getAllByText('Promedio diario')).toHaveLength(1);
     expect(view.getAllByTestId(/^metric-trend-chart-.*-gap$/)).toHaveLength(4);
     expect(view.getAllByTestId(/^metric-trend-chart-.*-zero$/)).toHaveLength(2);
     pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 0 pasos');
     expect(mockPush).not.toHaveBeenCalled();
-    // The legend says the target is the current one, and names the gaps the chart has.
-    const legend = within(view.getByTestId('metric-trend-legend'));
-    expect(legend.getByText('objetivo actual 10.000 pasos')).toBeTruthy(); expect(legend.getByText('hueco: sin dato')).toBeTruthy();
+    expect(view.getByText('Registro diario · ╌ objetivo actual 10.000 pasos')).toBeTruthy();
+    expect(view.queryByText(/^Escala/)).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Cómo se calcula' }));
+    expect(view.getByText(/^Escala/)).toBeTruthy();
     expect(within(view.getByTestId('metric-trend-stats')).getByText('Mediana')).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Sueño' })); await flush();
     expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toMatch(/^Tocá una barra,/);
-    expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.sleep, null);
+    expect(mockMetrics).toHaveBeenCalledTimes(1);
+    expect(mockWarmMetric).toHaveBeenCalledWith(mockClient, MONTH, ids.sleep, null);
     expect(within(view.getByTestId('metric-trend-summary')).getByText('7 h 30 min')).toBeTruthy();
     // Archived metrics wait behind one chip.
     expect(view.queryByRole('radio', { name: 'Mate viejo, archivada' })).toBeNull();
@@ -645,8 +656,8 @@ describe('Metrics Trends', () => {
   it('compares with the chosen range when Comparar is on', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
-    expect(within(view.getByTestId('metric-trend-summary')).getByText('1–5 sep 0 pasos · sin cambio')).toBeTruthy();
-    expect(view.getByText('1–5 sep 3 de 7')).toBeTruthy();
+    expect(view.getByText('sin cambio frente a 1–5 sep')).toBeTruthy();
+    expect(view.queryByText('1–5 sep 3 de 7')).toBeNull();
   });
   it('retains confirmed inspection through a failed refresh, but clears it when changing period', async () => {
     mockParams = { metric: ids.steps };
@@ -716,7 +727,36 @@ describe('Metrics Trends', () => {
     expect(view.queryByTestId('metric-trend-original')).toBeNull();
     expect(mockMetrics.mock.calls.at(-1)![0]).toBe(mockActiveClient);
   });
-  it('keeps archived definitions available, respects their units, and names the real A/B insufficiency', async () => {
+  it('keeps the chip rail and only the detail skeleton while a different metric joins a pending prefetch', async () => {
+    let settle!: (result: ReturnType<typeof ok<ProgressMetrics>>) => void;
+    mockWarmMetric.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    expect(mockMetrics).toHaveBeenCalledTimes(1);
+    expect(mockWarmMetric.mock.calls.map(call => call[2])).toEqual([ids.sleep]);
+    fireEvent.press(view.getByRole('radio', { name: 'Sueño' }));
+    expect(view.getByTestId('progress-metric-chips')).toBeTruthy();
+    expect(view.getByRole('radio', { name: 'Sueño' }).props.accessibilityState.selected).toBe(true);
+    expect(view.getByTestId('metric-detail-skeleton')).toBeTruthy();
+    expect(view.queryByTestId('metric-trend-summary')).toBeNull();
+    expect(view.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
+    await act(async () => settle(ok(metrics(ids.sleep))));
+    expect(view.getByText('7 h 30 min')).toBeTruthy();
+    expect(view.queryByTestId('metric-detail-skeleton')).toBeNull();
+    fireEvent.press(view.getByRole('radio', { name: 'Pasos' })); await flush();
+    expect(mockMetrics).toHaveBeenCalledTimes(1);
+    expect(mockWarmMetric).toHaveBeenCalledTimes(1);
+  });
+  it('shows stored zero minutes as zero, but a missing sleep reading stays a gap', async () => {
+    const data = metrics(ids.sleep);
+    data.summary = { ...data.summary!, minimum: 0, trendDelta: -630, trendPercentDelta: -100 };
+    mockMetrics.mockResolvedValueOnce(ok(data));
+    mockParams = { metric: ids.sleep };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    expect(view.getByLabelText('Mínimo, 0 h 0 min · 29 sep')).toBeTruthy();
+    expect(view.getByText('↘ 10 h 30 min (100 %)')).toBeTruthy();
+    expect(view.getByTestId('metric-trend-chart-2026-09-30-gap')).toBeTruthy();
+  });
+  it('keeps archived definitions available, respects their units and hides an ineligible comparison', async () => {
     mockParams = { metric: ids.custom };
     mockMetrics.mockImplementation(async (_c, _q, id) => {
       const data = metrics(id); data.comparison = cmp({ status: 'insufficient_data', reason: 'insufficient_current_samples', deltaAbsolute: null, deltaPercent: null, change: 'insufficient_data' });
@@ -724,7 +764,8 @@ describe('Metrics Trends', () => {
     });
     const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
     expect(view.getByRole('radio', { name: 'Mate viejo, archivada' }).props.accessibilityState.selected).toBe(true);
-    expect(view.getByTestId('metric-trend-comparison-reason')).toBeTruthy();
+    expect(view.queryByText('Período de referencia')).toBeNull();
+    expect(view.queryByText('Objetivo actual')).toBeNull();
     pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 0 L');
     fireEvent.press(view.getByRole('button', { name: 'Abrir registro diario original' }));
