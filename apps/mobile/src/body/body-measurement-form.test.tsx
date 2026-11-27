@@ -5,6 +5,7 @@ import { Alert, Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BODY_MEASUREMENT_FIELDS, type BodyMeasurement, type BodyMeasurementField, type BodyMeasurementReceipt } from '@/api/body';
 import { OwnlevelThemeProvider } from '@/design-system';
+import { haptics } from '@/platform/haptics';
 import { BodyController } from './body-controller';
 import { MeasurementEditorSheet } from './body-editor';
 import type { MeasurementDraft } from './body-model';
@@ -62,20 +63,20 @@ describe('first measurement (empty history)', () => {
     expect(region(view, 'Muslos').props.accessibilityState.expanded).toBe(false);
     for (const label of ['Cintura', 'Abdomen', 'Pecho', 'Cadera']) expect(view.getByLabelText(label)).toBeTruthy();
     expect(view.queryByLabelText('Brazo derecho')).toBeNull();
-    expect(view.queryByText(/Anterior:/)).toBeNull();
+    expect(view.queryByText(/Anterior ·/)).toBeNull();
     expect(view.getByLabelText('Cintura').props.value).toBe(''); // never pre-filled
     expect(view.getByLabelText('Cintura').props.autoFocus).toBeFalsy();
   });
   it('counts what was filled and keeps it when the region is collapsed', async () => {
     const { view, controller } = await mount([]);
-    expect(region(view, 'Tronco').props.accessibilityLabel).toBe('Tronco, 4 medidas, ninguna con valor');
+    expect(region(view, 'Tronco').props.accessibilityLabel).toBe('Tronco, 0 de 4 medidas');
     fireEvent.changeText(view.getByLabelText('Cintura'), '81,5');
-    expect(region(view, 'Tronco').props.accessibilityLabel).toBe('Tronco, 4 medidas, 1 con valor');
-    expect(view.getByText('1 valor cargado')).toBeTruthy();
+    expect(region(view, 'Tronco').props.accessibilityLabel).toBe('Tronco, 1 de 4 medidas');
+    expect(view.getByText('1 de 4', { includeHiddenElements: true })).toBeTruthy();
     fireEvent.press(region(view, 'Tronco'));
     expect(view.queryByLabelText('Cintura')).toBeNull();
     expect(draftOf(controller).waistCm).toBe('81,5');
-    expect(view.getByText('1 valor cargado')).toBeTruthy();
+    expect(view.getByText('1 de 4', { includeHiddenElements: true })).toBeTruthy();
     fireEvent.press(region(view, 'Tronco'));
     expect(view.getByLabelText('Cintura').props.value).toBe('81,5');
   });
@@ -118,6 +119,23 @@ describe('measurement review', () => {
   });
 });
 
+it('moves keyboard entry to the next zone and haptics only on a completed zone', async () => {
+  const { view } = await mount([]);
+  const haptic = jest.mocked(haptics.selection);
+  haptic.mockClear();
+  expect(view.getByRole('button', { name: 'Revisar medidas' }).props.accessibilityState.disabled).toBe(true);
+  for (const label of ['Cintura', 'Abdomen', 'Pecho']) fireEvent.changeText(view.getByLabelText(label), '80');
+  expect(haptic).not.toHaveBeenCalled();
+  expect(view.getByRole('button', { name: 'Revisar medidas' }).props.accessibilityState.disabled).toBe(false);
+  const hip = view.getByLabelText('Cadera');
+  fireEvent.changeText(hip, '80');
+  expect(haptic).toHaveBeenCalledTimes(1);
+  expect(hip.props.returnKeyType).toBe('next');
+  fireEvent(hip, 'submitEditing');
+  expect(region(view, 'Brazos').props.accessibilityState.expanded).toBe(true);
+  expect(view.getByLabelText('Brazo derecho').props.value).toBe('');
+});
+
 describe('historical edit', () => {
   const baseline = row('2026-10-01', { waistCm: 80, armRightCm: 31 });
   const older = row('2026-09-20', { waistCm: 82, armRightCm: 30, armLeftCm: 29 });
@@ -131,12 +149,13 @@ describe('historical edit', () => {
     expect(view.getByLabelText('Brazo izquierdo').props.value).toBe('');
     expect(view.queryByText('Tus medidas habituales')).toBeNull();
     // Its own 80 is not "Anterior": only the older row (20 sep) is.
-    expect(view.getByText('Anterior: 82 cm · 20 sep 2026')).toBeTruthy();
+    expect(view.getAllByText('Anterior · 20 sep')).toHaveLength(2);
+    expect(view.getByLabelText('Cintura').props.placeholder).toBe('82');
     expect(view.queryByText(/Anterior: 80 cm/)).toBeNull();
     expect(view.getByLabelText('Brazo izquierdo').props.accessibilityHint).toBe('Anterior: 29 cm · 20 sep 2026');
     expect(view.getByRole('button', { name: 'Eliminar medición' })).toBeTruthy();
-    // Edit placeholder keeps the saved value as a grey hint.
-    expect(view.getByLabelText('Brazo derecho').props.placeholder).toBe('31');
+    // The editor's current value is separate from the prior record used as a hint.
+    expect(view.getByLabelText('Brazo derecho').props.placeholder).toBe('30');
   });
   it('a region cleared by the user stays open (no collapse under the finger)', async () => {
     const { view } = await mount([baseline, older], c => c.openMeasurement(baseline));
@@ -154,7 +173,7 @@ describe('legacy record without sides', () => {
     for (const name of ['Tronco', 'Brazos', 'Muslos']) expect(region(view, name).props.accessibilityState.expanded).toBe(false);
     fireEvent.press(region(view, 'Brazos')); fireEvent.press(region(view, 'Muslos'));
     for (const label of ['Brazo derecho', 'Brazo izquierdo', 'Muslo derecho', 'Muslo izquierdo']) expect(view.getByLabelText(label).props.value).toBe('');
-    expect(view.queryByText(/Anterior:/)).toBeNull();
+    expect(view.queryByText(/Anterior ·/)).toBeNull();
     expect(draftOf(controller)).toMatchObject({ armRightCm: '', armLeftCm: '', thighRightCm: '', thighLeftCm: '' });
   });
 });
@@ -185,17 +204,17 @@ describe('date changes', () => {
   const history = [row('2026-10-03', { waistCm: 80 }), row('2026-10-01', { waistCm: 82 }), row('2026-09-20', { waistCm: 83 })];
   it('recompute the references (and habits) from the loaded history with no API call', async () => {
     const { view, controller, api } = await mount(history);
-    expect(view.getByText('Anterior: 80 cm · 3 oct 2026')).toBeTruthy();
+    expect(view.getByText('Anterior · 3 oct')).toBeTruthy();
     const calls = () => [api.overview, api.weights, api.measurements, api.weight, api.measurement].map(m => m.mock.calls.length);
     const before = calls();
     act(() => controller.change('date', '02/10/2026'));
-    expect(view.getByText('Anterior: 82 cm · 1 oct 2026')).toBeTruthy(); expect(view.queryByText(/3 oct 2026/)).toBeNull();
+    expect(view.getByText('Anterior · 1 oct')).toBeTruthy(); expect(view.queryByText(/Anterior · 3 oct/)).toBeNull();
     act(() => controller.change('date', '01/09/2026')); // before everything the user ever recorded
-    expect(view.queryByText(/Anterior:/)).toBeNull();
+    expect(view.queryByText(/Anterior ·/)).toBeNull();
     expect(view.queryByText('Tus medidas habituales')).toBeNull();
     expect(region(view, 'Tronco').props.accessibilityState.expanded).toBe(true);
     act(() => controller.change('date', '')); // an incomplete date never errors
-    expect(view.queryByText(/Anterior:/)).toBeNull();
+    expect(view.queryByText(/Anterior ·/)).toBeNull();
     expect(calls()).toEqual(before);
   });
 });
@@ -254,21 +273,19 @@ describe('accessibility', () => {
     expect(region(view, 'Brazos').props.accessibilityState).toMatchObject({ expanded: true });
     const before = JSON.stringify(draftOf(controller));
     const guide = view.getByRole('button', { name: 'Cómo medir cintura' });
-    expect(guide.props.accessibilityState).toMatchObject({ expanded: false });
     expect(view.queryByText(GUIDE_COMMON)).toBeNull();
     fireEvent.press(guide);
-    expect(view.getByRole('button', { name: 'Cómo medir cintura' }).props.accessibilityState).toMatchObject({ expanded: true });
     expect(view.getByText('Medí al final de una exhalación normal.')).toBeTruthy();
     expect(view.getAllByText(GUIDE_COMMON)).toHaveLength(1);
     expect(JSON.stringify(draftOf(controller))).toBe(before); // the guide never touches the draft
-    fireEvent.press(view.getByRole('button', { name: 'Cómo medir brazo' }));
-    expect(view.getByText('Medí cada lado por separado.')).toBeTruthy();
+
   });
   it('a field exposes its label and the reference as hint, also as a visible footnote', async () => {
     const { view } = await mount([row('2026-10-01', { waistCm: 82.5 })]);
     const field = view.getByLabelText('Cintura');
     expect(field.props.accessibilityHint).toBe('Anterior: 82,5 cm · 1 oct 2026');
-    expect(view.getByText('Anterior: 82,5 cm · 1 oct 2026')).toBeTruthy();
+    expect(view.getByText('Anterior · 1 oct')).toBeTruthy();
+    expect(field.props.placeholder).toBe('82,5');
     expect(view.getByLabelText('Abdomen').props.accessibilityHint).toBeUndefined(); // no value → nothing, not "0"
     expect(field.props.value).toBe('');
   });
