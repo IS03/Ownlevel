@@ -1,3 +1,4 @@
+import { completedWorkSet } from "../phase2/training-set-kind";
 import "server-only";
 import { trainingComparisonDto } from "./progress-training-comparison";
 import { loadCompletedTrainingData, loadTrainingRecordsData } from "@/lib/phase2/training-robust";
@@ -277,7 +278,7 @@ export function trainingInPeriodDto(ctx: TrainingContext, period: ProgressPeriod
   }));
   const sets = new Map<string, Snapshot["sets"]>();
   for (const set of ctx.source.sets) {
-    if (!set.is_completed || typeof set.actual_reps !== "number" || !Number.isFinite(set.actual_reps) || set.actual_reps <= 0) continue;
+    if (!completedWorkSet(set) || typeof set.actual_reps !== "number" || !Number.isFinite(set.actual_reps) || set.actual_reps <= 0) continue;
     const rows = sets.get(set.workout_session_exercise_id) ?? [];
     rows.push({ reps: set.actual_reps, load: typeof set.actual_weight_kg === "number" && Number.isFinite(set.actual_weight_kg) ? set.actual_weight_kg : null, date: "" });
     sets.set(set.workout_session_exercise_id, rows);

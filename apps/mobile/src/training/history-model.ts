@@ -164,9 +164,9 @@ export function repsOverWeights(sessions: readonly { sessionId: string; logDate:
   return { points, bands };
 }
 /** The reps of each completed set, with the set that is the session's mark highlighted (the first one that matches it). */
-export function setChips(sets: readonly TrainingHistoryMark[] | undefined, mark: TrainingHistoryMark | null) {
+export function setChips(sets: readonly (TrainingHistoryMark & { setKind?: "work" | "warmup" })[] | undefined, mark: TrainingHistoryMark | null) {
   if (!sets?.length) return null;
-  const best = mark ? sets.findIndex(set => set.weightKg === mark.weightKg && set.reps === mark.reps) : -1;
+  const best = mark ? sets.findIndex(set => set.setKind !== "warmup" && set.weightKg === mark.weightKg && set.reps === mark.reps) : -1;
   const weights = new Set(sets.map(set => set.weightKg));
-  return { chips: sets.map((set, index) => ({ reps: set.reps, weight: set.weightKg, best: index === best })), oneWeight: weights.size === 1 };
+  return { chips: sets.map((set, index) => ({ ...(set.setKind === "warmup" ? { warmup: true } : {}), reps: set.reps, weight: set.weightKg, best: index === best })), oneWeight: weights.size === 1 };
 }

@@ -1,3 +1,4 @@
+import { completedWorkSet } from "./training-set-kind";
 import { buildExercisePerformance, type ExerciseReportSession } from "./exercise-insights";
 import { normalizeExerciseSearch } from "./exercise-library";
 import { MUSCLE_GROUP_OPTIONS } from "./muscle-groups";
@@ -86,7 +87,7 @@ function finite(value: number | null | undefined): number | null {
 
 function latestSetMark(sets: ReadonlyArray<Pick<WorkoutSet, "is_completed" | "actual_weight_kg" | "actual_reps">>): TrainingHistoryMark | null {
   const completed = sets
-    .filter((set) => set.is_completed)
+    .filter(completedWorkSet)
     .map((set) => ({ weightKg: finite(set.actual_weight_kg), reps: finite(set.actual_reps) }));
   if (completed.length === 0) return null;
   return [...completed].sort((left, right) =>
@@ -116,7 +117,7 @@ export function buildTrainingHistoryDirectory(source: TrainingHistorySource): Tr
   const sessionById = new Map(source.sessions.map((session) => [session.id, session]));
   const setsBySessionExercise = new Map<string, WorkoutSet[]>();
   for (const set of source.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     const bucket = setsBySessionExercise.get(set.workout_session_exercise_id) ?? [];
     bucket.push(set);
     setsBySessionExercise.set(set.workout_session_exercise_id, bucket);
@@ -311,7 +312,7 @@ export function buildTrainingHistoryExerciseDetail(
     return rightKey.localeCompare(leftKey) || right.sessionId.localeCompare(left.sessionId);
   });
   const summaries = ordered.map((session): TrainingHistoryExerciseSession => {
-    const completed = session.sets.filter((set) => set.is_completed);
+    const completed = session.sets.filter(completedWorkSet);
     return {
       sessionId: session.sessionId,
       logDate: session.logDate,

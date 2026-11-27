@@ -1,4 +1,5 @@
 import "server-only";
+import { completedWorkSet } from "./training-set-kind";
 
 import {
   measurePerformance,
@@ -713,6 +714,7 @@ export async function listCompletedSessionHistory(input?: {
         .select("workout_session_exercise_id, actual_reps, actual_weight_kg")
         .eq("user_id", userId)
         .eq("is_completed", true)
+        .eq("set_kind", "work")
         .in("workout_session_exercise_id", exerciseIds)
     : { data: [], error: null };
   if (setsError) throw new Error(`Leer series de sesiones: ${setsError.message}`);
@@ -952,7 +954,7 @@ export async function listCompletedSetsByDay(input: { from: string; to: string }
     const chunk = ids.slice(index, index + 150);
     const sets = await readAllTrainingRows<SetRow>("Leer series por día", (from, to) => supabase
       .from("workout_sets").select("exercise:workout_session_exercises!inner(workout_session_id)")
-      .eq("user_id", userId).eq("is_completed", true).in("exercise.workout_session_id", chunk)
+      .eq("user_id", userId).eq("is_completed", true).eq("set_kind", "work").in("exercise.workout_session_id", chunk)
       .order("id", { ascending: true }).range(from, to).returns<SetRow[]>());
     for (const set of sets) {
       const date = dateBySession.get(set.exercise.workout_session_id);
@@ -1092,7 +1094,7 @@ type HomeTrainingExercise = Pick<
 >;
 type HomeTrainingSet = Pick<
   WorkoutSet,
-  "workout_session_exercise_id" | "actual_reps" | "actual_weight_kg" | "is_completed"
+  "workout_session_exercise_id" | "actual_reps" | "actual_weight_kg" | "is_completed" | "set_kind"
 >;
 type HomeTrainingData = {
   sessions: HomeTrainingSession[];
@@ -1120,7 +1122,7 @@ function summarizeCompletedSessions(
 
   const completedSetsBySession = new Map<string, number>();
   for (const set of data.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     const sessionId = sessionIdByExercise.get(set.workout_session_exercise_id);
     if (sessionId) {
       completedSetsBySession.set(
@@ -1210,7 +1212,7 @@ export async function getHomeTrainingSnapshot(
   const { data: rawRows, error } = await context.supabase
     .from("workout_sessions")
     .select(
-      "id, day_log_id, routine_id, routine_name_snapshot, session_name, status, started_at, ended_at, day_log:day_logs!inner(log_date), exercises:workout_session_exercises(id, workout_session_id, is_completed, muscle_group_label_snapshot, grupo_muscular_snapshot, sets:workout_sets(workout_session_exercise_id, actual_reps, actual_weight_kg, is_completed))",
+      "id, day_log_id, routine_id, routine_name_snapshot, session_name, status, started_at, ended_at, day_log:day_logs!inner(log_date), exercises:workout_session_exercises(id, workout_session_id, is_completed, muscle_group_label_snapshot, grupo_muscular_snapshot, sets:workout_sets(workout_session_exercise_id, actual_reps, actual_weight_kg, is_completed, set_kind))",
     )
     .eq("user_id", context.userId)
     .eq("status", "completed")
@@ -1280,6 +1282,8 @@ const firstPageCount = (from: number) => (from === 0 ? { count: "exact" as const
 export type CompletedTrainingScope = {
   /** Only sessions and their dates: no exercises or sets. */
   sessionsOnly?: boolean;
+  /** Timing of pre-session answers still uses the first completed set, including a warm-up. */
+  includeWarmups?: boolean;
   /**
    * Same rows, only the columns the exercise stats and the performance comparison read (Home's records). The rows keep
    * their full types: a reader of this scope must not read any other column.
@@ -1290,7 +1294,7 @@ export type CompletedTrainingScope = {
 export const RECORD_COLUMNS = {
   sessions: "id, day_log_id, status, started_at, ended_at, routine_id, routine_name_snapshot, session_name",
   exercises: "id, workout_session_id, exercise_id, is_completed, nombre_snapshot, grupo_muscular_snapshot, muscle_group_label_snapshot, weight_mode_snapshot, implement_snapshot",
-  sets: "id, workout_session_exercise_id, is_completed, actual_reps, actual_weight_kg",
+  sets: "id, workout_session_exercise_id, is_completed, actual_reps, actual_weight_kg, set_kind",
 } as const;
 
 type EmbeddedDay = { day: { log_date: string } | null };
@@ -1336,19 +1340,19 @@ export async function loadCompletedTrainingData(
       .order("id", { ascending: true })
       .range(from, to)
       .returns<WorkoutSessionExercise[]>()),
-    readAllTrainingRows<WorkoutSet>("Leer series de progreso", (from, to) => supabase
-      .from("workout_sets")
-      .select(scope.recordColumns ? RECORD_COLUMNS.sets : "*", firstPageCount(from))
-      .eq("user_id", userId)
-      .eq("is_completed", true)
-      .order("id", { ascending: true })
-      .range(from, to)
-      .returns<WorkoutSet[]>()),
+    readAllTrainingRows<WorkoutSet>("Leer series de progreso", (from, to) => {
+      const query = supabase.from("workout_sets")
+        .select(scope.recordColumns ? RECORD_COLUMNS.sets : "*", firstPageCount(from))
+        .eq("user_id", userId)
+        .eq("is_completed", true);
+      if (!scope.includeWarmups) query.eq("set_kind", "work");
+      return query.order("id", { ascending: true }).range(from, to).returns<WorkoutSet[]>();
+    }),
     readTrainingConfigurations(supabase, userId),
   ]);
   const sessionExercises = allExercises.filter((exercise) => sessionIds.has(exercise.workout_session_id));
   const exerciseIds = new Set(sessionExercises.map((exercise) => exercise.id));
-  const sets = allSets.filter((set) => exerciseIds.has(set.workout_session_exercise_id));
+  const sets = allSets.filter((set) => exerciseIds.has(set.workout_session_exercise_id) && (scope.includeWarmups || completedWorkSet(set)));
 
   return { sessions, sessionExercises, sets, dateByDayLog, configurations: configurationMap(configurationRows, exerciseIds) };
 }
@@ -1426,13 +1430,13 @@ const isRecordsRead = (value: unknown): value is TrainingRecordsRead => !!value 
   && ["sessions", "exercises", "sets", "history"].every((key) => Array.isArray((value as Record<string, unknown>)[key]));
 
 /**
- * Home's records in one read (`mobile_read_training_records_v2`): rows from `from` on with their implement and variant,
+ * Home's records in one read (`mobile_read_training_records_v3`): rows from `from` on with their implement and variant,
  * older history aggregated per exercise, mode, implement and variant. Before that EXPAND is applied, or after its
  * reversal, the narrow paged read (with the variants) returns the same records. The v1 function is not a fallback:
  * without implement and variant every comparison would read as unknown.
  */
 export async function loadTrainingRecordsData(context: AuthenticatedRequestContext, from: string): Promise<CompletedTrainingData> {
-  const { data, error } = await context.supabase.rpc("mobile_read_training_records_v2", { p_from: from });
+  const { data, error } = await context.supabase.rpc("mobile_read_training_records_v3", { p_from: from });
   if (error?.code === "PGRST202") return loadCompletedTrainingData(context, { recordColumns: true });
   if (error) throw new Error(`Leer récords: ${error.message}`);
   if (!isRecordsRead(data)) throw new Error("Leer récords: respuesta inválida.");

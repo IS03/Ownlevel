@@ -58,7 +58,7 @@ describe('training times resource', () => {
   it('authenticates first and validates the new shared contract', async () => {
     const response = await progressTrainingTimesResponse(request()); expect(response.status).toBe(200);
     expect(parseProgressTrainingTimes(await response.json())).toBeDefined();
-    expect(loadCompletedTrainingData).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner-a', supabase }));
+    expect(loadCompletedTrainingData).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner-a', supabase }), { includeWarmups: true });
     expect(query.eq).toHaveBeenCalledWith('session.user_id', 'owner-a');
     expect(response.headers.get('cache-control')).toContain('no-store');
   });

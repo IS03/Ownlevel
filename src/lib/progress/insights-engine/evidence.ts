@@ -48,7 +48,7 @@ export function insightsExerciseEvidence(source: InsightsSource, selection: { se
   const input = { sessions, historyCoverage: "complete" as const, exclusionDetail: "summary" as const };
   const strict = buildPerformanceInsightsV1(input);
   const setsOf = new Map<string, InsightsSource["sets"][number][]>();
-  for (const set of source.sets) setsOf.set(set.sessionExerciseId, [...(setsOf.get(set.sessionExerciseId) ?? []), set]);
+  for (const set of source.sets) if (set.setKind !== "warmup") setsOf.set(set.sessionExerciseId, [...(setsOf.get(set.sessionExerciseId) ?? []), set]);
   const dates: Rows = { dates: new Map(source.sessions.map(row => [row.id, row.date])), blocks: new Map(source.exercises.map(row => [row.id, row])), setsOf };
   const sessionId = selection.sessionId.toLowerCase(), exerciseId = selection.exerciseId.toLowerCase();
   const name = source.exercises.find(row => row.sessionId.toLowerCase() === sessionId && row.exerciseId.toLowerCase() === exerciseId)?.name ?? "";

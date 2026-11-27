@@ -87,7 +87,7 @@ describe("GET performance-insights", () => {
     expect(calls).toHaveLength(7 + 1 + 2);
     // Sets ride inside the exercises' pages, filtered by owner and ordered: no stream of their own.
     const exercises = calls.find(row => row.table === "workout_session_exercises")!;
-    expect(exercises.selected).toContain("sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at)");
+    expect(exercises.selected).toContain("sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at,set_kind)");
     expect(exercises.filters).toContainEqual(["eq", "sets.user_id", USER]);
     expect(exercises.filters).toContainEqual(["order", "id", { referencedTable: "sets" }]);
     // One count of the person's sets, without rows, tells whole lists from cut ones. The stream itself is not read.

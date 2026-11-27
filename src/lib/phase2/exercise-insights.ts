@@ -1,3 +1,4 @@
+import { completedWorkSet } from "./training-set-kind";
 import type {
   MuscleGroup,
   TrainingAdjustment,
@@ -22,7 +23,7 @@ export type ExerciseDirectoryEntry = {
   bestWeightKg: number | null;
   totalVolumeKg: number;
   lastDecision: TrainingAdjustment | null;
-  lastSets: Array<Pick<WorkoutSet, "actual_reps" | "actual_weight_kg" | "is_completed">>;
+  lastSets: Array<Pick<WorkoutSet, "actual_reps" | "actual_weight_kg" | "is_completed" | "set_kind">>;
   routineIds: string[];
 };
 
@@ -68,6 +69,7 @@ export type ExerciseReportSet = Pick<
   | "actual_reps"
   | "actual_weight_kg"
   | "is_completed"
+  | "set_kind"
 >;
 
 export type ExerciseReportSession = {
@@ -122,7 +124,7 @@ function finiteNumber(value: number | null): number | null {
 }
 
 export function completedExerciseSets(sets: readonly ExerciseReportSet[]): ExerciseReportSet[] {
-  return sets.filter((set) => set.is_completed);
+  return sets.filter(completedWorkSet);
 }
 
 function chronologicalSessions(sessions: readonly ExerciseReportSession[]): ExerciseReportSession[] {
@@ -245,9 +247,9 @@ export function exerciseSessionVolume(sets: readonly ExerciseReportSet[]): numbe
 }
 
 export function summarizeLatestExercisePerformance(
-  sets: ReadonlyArray<Pick<WorkoutSet, "actual_reps" | "actual_weight_kg" | "is_completed">>,
+  sets: ReadonlyArray<Pick<WorkoutSet, "actual_reps" | "actual_weight_kg" | "is_completed" | "set_kind">>,
 ) {
-  const completed = sets.filter((set) => set.is_completed);
+  const completed = sets.filter(completedWorkSet);
   const maxWeightKg = completed
     .map((set) => finiteNumber(set.actual_weight_kg))
     .filter((weight): weight is number => weight !== null)

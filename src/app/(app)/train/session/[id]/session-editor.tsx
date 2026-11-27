@@ -248,7 +248,7 @@ function SetRow({
     >
       <div className="col-start-1 row-start-1 flex min-w-0 items-center justify-center">
         <span className="metric-number flex size-6 items-center justify-center rounded-md bg-muted/25 text-xs font-semibold text-muted-foreground">
-          {setIndex + 1}
+          {set.set_kind === "warmup" ? <abbr title="Calentamiento">C</abbr> : setIndex + 1}
         </span>
       </div>
       <LocalizedDecimalInput
@@ -297,7 +297,7 @@ function SetRow({
       {readOnly ? (
         <div
           className="col-start-5 row-start-1 flex min-w-0 items-center justify-center"
-          aria-label={set.is_completed ? "Serie completada" : "Serie pendiente"}
+          aria-label={set.set_kind === "warmup" ? "Calentamiento" : set.is_completed ? "Serie completada" : "Serie pendiente"}
         >
           <span
             className={cn(

@@ -67,7 +67,7 @@ async function trainingSource(context: Context, ranges: Range[]): Promise<Traini
       .or(dates, { referencedTable: "session.day" }).order("id").range(from, to)),
     readAllTrainingRows<TrainingAnalysisSource["sets"][number]>("Leer series de conexiones", (from, to) => supabase.from("workout_sets")
       .select("*,exercise:workout_session_exercises!inner(session:workout_sessions!inner(day:day_logs!inner(log_date)))")
-      .eq("user_id", userId).eq("is_completed", true).eq("exercise.session.status", "completed")
+      .eq("user_id", userId).eq("is_completed", true).eq("set_kind", "work").eq("exercise.session.status", "completed")
       .or(dates, { referencedTable: "exercise.session.day" }).order("id").range(from, to)),
   ]);
   const configurations = new Map<string, string | null>();

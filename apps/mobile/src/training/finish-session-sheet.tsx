@@ -28,7 +28,7 @@ export function finishPreviewVolume(controller: ActiveSessionController): number
     if (!entry) return null;
     try {
       for (const set of exercisePayload(entry.draft).sets) {
-        if (set.isCompleted && set.actualReps !== null && set.actualWeightKg !== null) { total += set.actualReps * set.actualWeightKg; known = true; }
+        if (set.isCompleted && set.setKind !== "warmup" && set.actualReps !== null && set.actualWeightKg !== null) { total += set.actualReps * set.actualWeightKg; known = true; }
       }
     } catch { return null; } // Never show a partial sum while another draft is invalid.
   }

@@ -34,6 +34,13 @@ describe('additive session highlights', () => {
     expect(mocks.history).toHaveBeenCalledWith(exerciseId, expect.objectContaining({ userId: 'owner' }));
     expect(parseSessionHighlights(data)).toEqual(data);
   });
+  it('ignores warm-up weight and reps in both the window and the recorded baseline', async () => {
+    mocks.detail.mockResolvedValue(detail('Peso total', [set(60), { ...set(120, 30), set_kind: 'warmup' }]));
+    const earlier = previous(200);
+    earlier.exercise.sets[0].set_kind = 'warmup';
+    mocks.history.mockResolvedValue([earlier, previous(50, 8, 'Peso total', 'completed', '2026-10-01T17:00:00Z')]);
+    expect(await read()).toMatchObject({ volumeKg: 600, highlights: [{ kind: 'record', mark: { weightKg: 60, reps: 10 }, previous: { weightKg: 50, reps: 8 } }] });
+  });
   it('does not turn a first appearance or an equal mark into a record', async () => {
     mocks.history.mockResolvedValue([]); expect((await read()).highlights).toEqual([]);
     mocks.history.mockResolvedValue([previous(60)]); expect((await read()).highlights).toEqual([]);

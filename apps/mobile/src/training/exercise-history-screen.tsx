@@ -91,7 +91,7 @@ function SessionLine({ session, label, unit, first, onPress }: { session: Traini
   const { fontScale } = useWindowDimensions();
   const chips = setChips(session.sets, session.mark);
   const weight = chips?.oneWeight && chips.chips[0]?.weight !== null && chips.chips[0]?.weight !== undefined && unit ? `${number(chips.chips[0].weight)} ${unit}` : null;
-  const spokenSets = chips ? `Series: ${chips.chips.map(chip => chip.reps === null ? 'sin reps' : number(chip.reps)).join(', ')}${weight ? `, todas con ${weight}` : ''}` : plural(session.completedSets, 'serie');
+  const spokenSets = chips ? `Series: ${chips.chips.map(chip => `${chip.warmup ? 'calentamiento ' : ''}${chip.reps === null ? 'sin reps' : number(chip.reps)}`).join(', ')}${weight ? `, todas con ${weight}` : ''}` : plural(session.completedSets, 'serie');
   return <Pressable accessibilityRole="button" accessibilityLabel={`${dayHeading(session.logDate)}, ${session.routineName}. Mejor serie ${label}. ${spokenSets}`}
     testID={`exercise-history-session-${session.sessionId}`} onPress={onPress}
     style={({ pressed }) => [styles.session, !first && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
@@ -99,7 +99,7 @@ function SessionLine({ session, label, unit, first, onPress }: { session: Traini
       <AppText muted numberOfLines={1} variant="footnote">{dayHeading(session.logDate).replace(',', '').split(' de ')[0]} · {session.routineName}</AppText>
       {chips && fontScale <= 1.3 ? <View style={styles.chips}>{chips.chips.map((chip, index) => <View key={index}
         style={[styles.chip, { backgroundColor: chip.best ? colors.brandSubtle : colors.surfaceRaised }]}>
-        <AppText numeric variant="caption" style={chip.best ? { color: colors.primary, fontWeight: '700' } : undefined}>{chip.reps === null ? '—' : number(chip.reps)}</AppText>
+        <AppText numeric variant="caption" style={chip.best ? { color: colors.primary, fontWeight: '700' } : undefined}>{chip.warmup ? 'C · ' : ''}{chip.reps === null ? '—' : number(chip.reps)}</AppText>
       </View>)}</View> : <AppText numeric variant="headline">{label} · {plural(session.completedSets, 'serie')}</AppText>}
     </View>
     {chips && fontScale <= 1.3 ? <AppText numeric variant="headline">{weight ?? label}</AppText> : null}

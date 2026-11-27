@@ -1,3 +1,4 @@
+import { completedWorkSet } from "../phase2/training-set-kind";
 import { muscleGroupLabel } from "../phase2/muscle-groups";
 import type { ExerciseReportSession } from "../phase2/exercise-insights";
 import type { TrainingAnalysis, TrainingAnalysisSource } from "../phase2/training-analysis";
@@ -82,7 +83,7 @@ function serializeExerciseSessions(
   const sessionById = new Map(source.sessions.map((session) => [session.id, session]));
   const setsBySessionExercise = new Map<string, TrainingAnalysisSource["sets"]>();
   for (const set of source.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     const bucket = setsBySessionExercise.get(set.workout_session_exercise_id) ?? [];
     bucket.push(set);
     setsBySessionExercise.set(set.workout_session_exercise_id, bucket);
@@ -127,7 +128,7 @@ export function buildTrainingExerciseMarks(
 ): TrainingExerciseMark[] {
   const mode = normalizedMode(weightMode);
   const candidates: MarkCandidate[] = sessions.filter((session) => !session.weightMode || normalizedMode(session.weightMode) === mode).flatMap((session) => session.sets
-    .filter((set) => set.is_completed)
+    .filter(completedWorkSet)
     .map((set) => ({ load: set.actual_weight_kg, reps: set.actual_reps, logDate: session.logDate })));
   if (!candidates.length) return [];
 
@@ -157,7 +158,7 @@ export function buildTrainingExerciseMarks(
   }
   if (unit === "kg") {
     const volumes = sessions.filter((session) => !session.weightMode || normalizedMode(session.weightMode) === mode).flatMap((session) => {
-      const value = session.sets.filter((set) => set.is_completed).reduce((total, set) => total + Math.max(0, set.actual_weight_kg ?? 0) * Math.max(0, set.actual_reps ?? 0), 0);
+      const value = session.sets.filter(completedWorkSet).reduce((total, set) => total + Math.max(0, set.actual_weight_kg ?? 0) * Math.max(0, set.actual_reps ?? 0), 0);
       return value > 0 ? [{ value, logDate: session.logDate }] : [];
     }).sort((a, b) => b.value - a.value || b.logDate.localeCompare(a.logDate));
     if (volumes[0]) marks.push({ kind: "best_volume", label: "Mejor volumen de sesión", value: volumes[0].value, unit: "kg", context: null, logDate: volumes[0].logDate });

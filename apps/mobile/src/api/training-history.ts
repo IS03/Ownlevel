@@ -37,7 +37,7 @@ export type TrainingExerciseHistorySession = {
   routineId?: string | null;
   sessionId: string; logDate: string; routineName: string; mark: TrainingHistoryMark | null; completedSets: number; rirValues: number[];
   /** Each completed set in set order (asked with `sets=1`). Absent: an older server. */
-  sets?: TrainingHistoryMark[];
+  sets?: (TrainingHistoryMark & { setKind?: "work" | "warmup" })[];
 };
 export type TrainingExerciseHistory = {
   routines?: { id: string; name: string }[];
@@ -140,9 +140,15 @@ function parseExerciseSession(value: unknown): TrainingExerciseHistorySession | 
     !g.id(value.sessionId) || !g.date(value.logDate) || typeof value.routineName !== 'string' || !g.counter(value.completedSets) ||
     !Array.isArray(value.rirValues) || !value.rirValues.every(rir => typeof rir === 'number' && Number.isFinite(rir))) return undefined;
   const mark = parseMark(value.mark);
-  const sets = value.sets === undefined ? undefined : Array.isArray(value.sets) ? value.sets.map(parseMark) : [undefined];
+  const sets = value.sets === undefined ? undefined : Array.isArray(value.sets) ? value.sets.map(set => {
+    if (!g.record(set, ['weightKg', 'reps', 'setKind'])) return undefined;
+    if (!('setKind' in set)) return parseMark(set);
+    if (set.setKind !== 'warmup' && set.setKind !== 'work') return undefined;
+    const parsed = parseMark({ weightKg: set.weightKg, reps: set.reps });
+    return parsed ? { ...parsed, setKind: set.setKind } : undefined;
+  }) : [undefined];
   if (mark === undefined || sets?.some(set => !set)) return undefined;
-  return { ...(value as TrainingExerciseHistorySession), mark, ...(sets ? { sets: sets as TrainingHistoryMark[] } : {}) };
+  return { ...(value as TrainingExerciseHistorySession), mark, ...(sets ? { sets: sets as NonNullable<TrainingExerciseHistorySession["sets"]> } : {}) };
 }
 export function parseTrainingExerciseHistory(value: unknown, exerciseId?: string): TrainingExerciseHistory | undefined {
   if (!g.record(value, ['exercise', 'latest', 'best', 'sessions', 'hasMore', 'routines']) || Object.keys(value).length !== (value.routines === undefined ? 5 : 6) ||
@@ -223,7 +229,7 @@ export function fetchTrainingHistoryExercises(client: MobileApiClient, signal?: 
 }
 export function fetchTrainingExerciseHistory(client: MobileApiClient, exerciseId: string, limit: number,
   signal?: AbortSignal, routineId?: string | null): Promise<MobileApiReadResult<TrainingExerciseHistory>> {
-  return client.read({ path: `${BASE}/history/exercises/${encodeURIComponent(exerciseId)}?limit=${limit}&historyByRoutine=1&sets=1${routineId ? `&routineId=${encodeURIComponent(routineId)}` : ''}`, signal,
+  return client.read({ path: `${BASE}/history/exercises/${encodeURIComponent(exerciseId)}?limit=${limit}&historyByRoutine=1&sets=1${routineId ? `&routineId=${encodeURIComponent(routineId)}` : ''}&setKinds=1`, signal,
     parse: value => {
       const parsed = parseTrainingExerciseHistory(value, exerciseId);
       return routineId && parsed?.routines === undefined ? undefined : parsed;

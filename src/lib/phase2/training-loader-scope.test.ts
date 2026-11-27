@@ -136,7 +136,7 @@ function dataset({ days, completed, perSession, setsPerExercise, configuredDays 
       if (configuredDays === Infinity || date >= capturedFrom) t.workout_session_exercise_configurations.push({ id: ex.id, session_exercise_id: ex.id, user_id: user,
         kind: e % 2 ? "recorded" : "not_applicable", label: e % 2 ? `Agarre ${e % 3}` : null });
       for (let k = 0; k < setsPerExercise; k += 1) {
-        t.workout_sets.push({ id: id(4, n++), user_id: user, workout_session_exercise_id: ex.id, set_number: k + 1, is_completed: k !== setsPerExercise - 1 || n % 4 !== 0,
+        t.workout_sets.push({ id: id(4, n++), user_id: user, workout_session_exercise_id: ex.id, set_number: k + 1, set_kind: "work", is_completed: k !== setsPerExercise - 1 || n % 4 !== 0,
           actual_reps: 6 + ((n + k) % 6), actual_weight_kg: 40 + ((n * 7) % 50) });
       }
     }

@@ -41,11 +41,11 @@ type ExerciseRow = { id: string; workout_session_id: string; exercise_id: string
   sets: EmbeddedSetRow[] };
 type ConfigurationRow = { kind: string | null; label: string | null };
 const oneConfiguration = (value: ExerciseRow["configuration"]) => Array.isArray(value) ? value.length === 1 ? value[0]! : null : value ?? null;
-type SetRow = { id: string; workout_session_exercise_id: string; actual_reps: number | null; actual_weight_kg: number | string | null; is_completed: boolean; completed_at: string | null };
+type SetRow = { id: string; workout_session_exercise_id: string; actual_reps: number | null; actual_weight_kg: number | string | null; is_completed: boolean; completed_at: string | null; set_kind?: "work" | "warmup" };
 type EmbeddedSetRow = Omit<SetRow, "workout_session_exercise_id">;
 /** uuid order is byte order, which is the order of their canonical text: the same order as `order("id")` in the database. */
 const byId = (a: { id: string }, b: { id: string }) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-const SET_COLUMNS = "id,actual_reps,actual_weight_kg,is_completed,completed_at";
+const SET_COLUMNS = "id,actual_reps,actual_weight_kg,is_completed,completed_at,set_kind";
 type MetricRow = { id: string; name: string; unit: string | null; value_type: string; is_active: boolean; archived_at: string | null; system_key?: string | null; sort_order?: number | null };
 type NightRow = { convention: string; declared_updated_at: string; declared_value: number | string; declared_date: string };
 type ValueRow = { id: string; metric_id: string; metric_date: string; value: unknown; updated_at?: string; night?: NightRow | NightRow[] | null };
@@ -116,7 +116,7 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
     exercises: completedExercises.map(row => ({ id: row.id, sessionId: row.workout_session_id, exerciseId: row.exercise_id, name: row.nombre_snapshot, implement: row.implement_snapshot, weightMode: row.weight_mode_snapshot, isCompleted: row.is_completed,
       // Recorded by the person for this session, or unknown. The catalog is not history and nothing is invented.
       configuration: configurationIdentity(oneConfiguration(row.configuration)) })),
-    sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at })),
+    sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at, ...(row.set_kind ? { setKind: row.set_kind } : {}) })),
     feelings: feelings.map(row => ({ sessionId: row.session_id, revision: row.revision, facts: row.facts })),
     metricDefinitions: definitions.map(row => ({ id: row.id, name: row.name, unit: row.unit, valueType: row.value_type, archived: !row.is_active || row.archived_at !== null, systemKey: row.system_key ?? null, order: row.sort_order ?? null })),
     metricValues: values.map(row => ({ metricId: row.metric_id, date: row.metric_date, value: row.value, sleepNight: sleepNightOf(row) })),
@@ -180,14 +180,14 @@ export async function readExerciseSource(context: Context, exerciseId: string): 
       startedAt: row.started_at, endedAt: row.ended_at, performanceLevel: null, painLevel: null, legacyEnergyLevel: null })),
     exercises: rows.map(row => ({ id: row.id, sessionId: row.workout_session_id, exerciseId: row.exercise_id, name: row.nombre_snapshot, implement: row.implement_snapshot, weightMode: row.weight_mode_snapshot, isCompleted: row.is_completed,
       configuration: configurationIdentity(oneConfiguration(row.configuration)), order: row.exercise_order })),
-    sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at,
+    sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at, ...(row.set_kind ? { setKind: row.set_kind } : {}),
       setNumber: row.set_number })),
     feelings: [], metricDefinitions: [], metricValues: [], meals: [],
   };
 }
 
 const shiftDate = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-type OrderSetRow = { target_reps: number | null; actual_reps: number | null; actual_weight_kg: number | string | null; is_completed: boolean };
+type OrderSetRow = { set_kind?: "work" | "warmup"; target_reps: number | null; actual_reps: number | null; actual_weight_kg: number | string | null; is_completed: boolean };
 type OrderRow = { id: string; workout_session_id: string; exercise_id: string; exercise_order: number; nombre_snapshot: string; sets: OrderSetRow[]; set_count: { count: number }[] };
 /**
  * Orden de la rutina: the blocks of the routine's completed sessions since `from`, each with its `exercise_order` as it stayed
@@ -197,12 +197,12 @@ type OrderRow = { id: string; workout_session_id: string; exercise_id: string; e
 export async function readRoutineOrderBlocks(context: Context, routineId: string, from: string): Promise<OrderBlock[]> {
   const { supabase, userId } = context;
   const rows = await readAllTrainingRows<OrderRow>("Leer orden de la rutina", page => supabase.from("workout_session_exercises")
-    .select("id,workout_session_id,exercise_id,exercise_order,nombre_snapshot,sets:workout_sets(target_reps,actual_reps,actual_weight_kg,is_completed),set_count:workout_sets(count),session:workout_sessions!inner(routine_id,status,day:day_logs!inner(log_date))", firstPage(page))
+    .select("id,workout_session_id,exercise_id,exercise_order,nombre_snapshot,sets:workout_sets(target_reps,actual_reps,actual_weight_kg,is_completed,set_kind),set_count:workout_sets(count),session:workout_sessions!inner(routine_id,status,day:day_logs!inner(log_date))", firstPage(page))
     .eq("user_id", userId).eq("session.routine_id", routineId).eq("session.status", "completed").gte("session.day.log_date", from)
     .eq("sets.user_id", userId).eq("set_count.user_id", userId).order("id").range(page, page + 999).returns<OrderRow[]>());
   if (rows.some(row => row.sets.length !== (row.set_count[0]?.count ?? 0))) throw new Error("Leer series del orden de la rutina");
   return rows.map(row => ({ sessionId: row.workout_session_id, exerciseId: row.exercise_id, name: row.nombre_snapshot, order: row.exercise_order,
-    sets: row.sets.map(set => ({ targetReps: strictNumber(set.target_reps), actualReps: strictNumber(set.actual_reps), actualLoad: strictNumber(set.actual_weight_kg), isCompleted: set.is_completed })) }));
+    sets: row.sets.filter(set => set.set_kind !== "warmup").map(set => ({ targetReps: strictNumber(set.target_reps), actualReps: strictNumber(set.actual_reps), actualLoad: strictNumber(set.actual_weight_kg), isCompleted: set.is_completed })) }));
 }
 
 /**

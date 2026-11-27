@@ -1,4 +1,5 @@
 import 'server-only';
+import { completedWorkSet } from '../phase2/training-set-kind';
 import { getWorkoutSessionDetail, listCompleteRobustExerciseHistory, type RobustExerciseHistoryItem } from '../phase2/training-robust';
 import { buildExercisePerformance, type ExerciseReportSession } from '../phase2/exercise-insights';
 import type { WorkoutSet } from '../phase2/types';
@@ -25,12 +26,14 @@ export function exerciseHighlight(exerciseId: string, name: string, mode: string
   if (!previous.length) return null;
   const best = previous.reduce((left, right) => better(right.value, left.value) ? right : left).value;
   if (mark.weightKg > best.weightKg) return { kind: 'record', exerciseId, name, mark, previous: best, weightMode: mode! };
-  const last = ordered[0]?.value;
+  const last = ordered.find(row => !onlyWarmups(row.item.exercise.sets))?.value;
   return last && better(mark, last) ? { kind: 'improvement', exerciseId, name, mark, previous: last, weightMode: mode! } : null;
 }
 type SessionDetail = NonNullable<Awaited<ReturnType<typeof getWorkoutSessionDetail>>>;
 type Auth = { supabase: MobileSupabaseAuthenticatedContext['supabase']; userId: string; requestPerformance: RequestPerformanceContext };
-const completed = (sets: WorkoutSet[]) => sets.filter(set => set.is_completed);
+const completed = (sets: WorkoutSet[]) => sets.filter(completedWorkSet);
+const onlyWarmups = (sets: WorkoutSet[]) =>
+  sets.some(set => set.is_completed && set.set_kind === 'warmup') && !sets.some(completedWorkSet);
 /** Earlier completed sessions with this exercise, newest first (the session itself never counts). */
 function earlier(history: RobustExerciseHistoryItem[], detail: SessionDetail) {
   return history.filter(item => item.session.id !== detail.session.id && item.session.status === 'completed' && item.session.ended_at
@@ -55,7 +58,7 @@ async function histories(detail: SessionDetail, auth: Auth, wanted: (exercise: S
 }
 function highlightsOf(detail: SessionDetail, history: Map<string, RobustExerciseHistoryItem[]>): Pick<SessionHighlightsDto, 'volumeKg' | 'highlights'> {
   const weighted = detail.exercises.filter(exercise => isKgWeightMode(exercise.weight_mode_snapshot))
-    .flatMap(exercise => exercise.sets.filter(set => set.is_completed && set.actual_weight_kg !== null && set.actual_reps !== null));
+    .flatMap(exercise => exercise.sets.filter(set => completedWorkSet(set) && set.actual_weight_kg !== null && set.actual_reps !== null));
   const volumeKg = weighted.length ? weighted.reduce((total, set) => total + set.actual_weight_kg! * set.actual_reps!, 0) : null;
   const highlights = detail.exercises.flatMap(exercise => {
     if (!HIGHLIGHT_WEIGHT_MODES.some(mode => mode === exercise.weight_mode_snapshot) || !bestMark(exercise.sets)) return [];
@@ -91,7 +94,7 @@ function volume(sets: WorkoutSet[], byLoad: boolean) {
 /** How one exercise of the session went against the last time it was done before it. */
 export function exerciseComparison(exercise: SessionDetail['exercises'][number], before: RobustExerciseHistoryItem[]): SessionExerciseComparison {
   const base = { sessionExerciseId: exercise.id, exerciseId: exercise.exercise_id };
-  const last = before[0];
+  const last = before.find(item => !onlyWarmups(item.exercise.sets));
   if (!last) return { ...base, status: 'first', change: null, previous: null };
   const previous = { sessionId: last.session.id, endedAt: last.session.ended_at!,
     sets: completed(last.exercise.sets).sort((a, b) => a.set_number - b.set_number).map(set => ({ weightKg: set.actual_weight_kg, reps: set.actual_reps })) };

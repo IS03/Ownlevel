@@ -1,3 +1,4 @@
+import { completedWorkSet } from "../phase2/training-set-kind";
 import type { WorkoutSession, WorkoutSessionExercise, WorkoutSet } from "@/lib/phase2/types";
 
 export type DailyHistorySession = {
@@ -39,7 +40,7 @@ export function summarizeDailyHistorySessions(input: {
   }
   const setsByExercise = new Map<string, WorkoutSet[]>();
   for (const set of input.sets) {
-    if (!set.is_completed) continue;
+    if (!completedWorkSet(set)) continue;
     const items = setsByExercise.get(set.workout_session_exercise_id) ?? [];
     items.push(set);
     setsByExercise.set(set.workout_session_exercise_id, items);
