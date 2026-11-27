@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
+import MaskedView from '@react-native-masked-view/masked-view';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import type { ProgressHabitWeek, ProgressMetricHabit } from '@/api/progress';
-import { LinkRow, AppIcon, AppText, InlineUnavailable, SkeletonBlock, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppText, InlineUnavailable, SkeletonBlock, brandTokens, motionDurations, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 
 import { homeMetricIcon } from './home-metric-icons';
@@ -23,7 +26,6 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
   const { fontScale, width } = useWindowDimensions();
   // One row's real height (it grows with the text size), so the window shows exactly `limit` rows and a hint of the next.
   const [rowHeight, setRowHeight] = useState<number>(brandTokens.layout.minTouch + 4);
-  const scroll = useRef<ScrollView>(null);
   const data = habits.data?.weekStart === weekStart && habits.data.today === today ? habits.data : undefined;
   // Leave room for complete names/values and the remainder action at accessibility sizes.
   const limit = fontScale > 2 ? 1 : fontScale > 1.3 || width < 375 ? 2 : 3;
@@ -40,9 +42,9 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
   const visibleLimit = stale && data.items.length > limit ? Math.min(2, limit) : limit;
   const overflow = data.items.length > visibleLimit;
   // The block keeps its size: more metrics than fit scroll inside it, with half of the next row showing that there is more.
-  const windowHeight = overflow && rowHeight ? rowHeight * (visibleLimit + 0.5) : undefined;
+  const windowHeight = rowHeight * (visibleLimit + 0.5);
   return <View testID="home-week-habits">
-    <ScrollingRows scroll={scroll} height={windowHeight} overflow={overflow}>
+    <ScrollingRows height={windowHeight} fadeHeight={rowHeight / 2} overflow={overflow}>
     {data.items.map((item, index) => {
       const value = item.average === null ? '—' : formatValue(item.average, item.unit, item.valueType);
       // Monday to today: each metric counts the days it has, out of the days the week has had so far.
@@ -71,11 +73,36 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
   </View>;
 }
 
-/** The rows, in a window of fixed height when there are more than fit; it flashes its scroll bar once so the more is seen. */
-function ScrollingRows({ children, height, overflow, scroll }: { children: React.ReactNode; height: number | undefined; overflow: boolean; scroll: React.RefObject<ScrollView | null> }) {
-  useEffect(() => { if (overflow && height) { const timer = setTimeout(() => scroll.current?.flashScrollIndicators(), 600); return () => clearTimeout(timer); } }, [overflow, height, scroll]);
-  if (!overflow) return <>{children}</>;
-  return <ScrollView ref={scroll} nestedScrollEnabled showsVerticalScrollIndicator style={height ? { height, flexGrow: 0 } : null} testID="home-habits-scroll">{children}</ScrollView>;
+function ScrollingRows({ children, height, fadeHeight, overflow }: { children: ReactNode; height: number; fadeHeight: number; overflow: boolean }) {
+  return overflow ? <MaskedRows height={height} fadeHeight={fadeHeight}>{children}</MaskedRows> : <>{children}</>;
+}
+
+function MaskedRows({ children, height, fadeHeight }: { children: ReactNode; height: number; fadeHeight: number }) {
+  const [atBottom, setAtBottom] = useState(false);
+  const reduced = useReduceMotion();
+  const gradient = useId();
+  const fadeIn = reduced ? undefined : FadeIn.duration(motionDurations.fast);
+  const fadeOut = reduced ? undefined : FadeOut.duration(motionDurations.fast);
+  return <MaskedView style={{ height, flexGrow: 0 }} androidRenderingMode="software" testID="home-habits-mask"
+    maskElement={<View style={styles.mask} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={styles.maskOpaque} />
+      <View style={{ height: fadeHeight }}>
+        <Svg width="100%" height={fadeHeight} preserveAspectRatio="none">
+          <Defs><LinearGradient id={gradient} x1="0" x2="0" y1="0" y2="1">
+            <Stop offset="0" stopColor="black" stopOpacity={1} />
+            <Stop offset="1" stopColor="black" stopOpacity={0} />
+          </LinearGradient></Defs>
+          <Rect width="100%" height="100%" fill={`url(#${gradient})`} />
+        </Svg>
+        {atBottom ? <Animated.View entering={fadeIn} exiting={fadeOut} testID="home-habits-mask-opaque"
+          style={styles.maskFill} /> : null}
+      </View>
+    </View>}>
+    <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} scrollEventThrottle={16} bounces={false}
+      onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) =>
+        setAtBottom(contentSize.height - layoutMeasurement.height - contentOffset.y <= 1)}
+      style={{ height, flexGrow: 0 }} testID="home-habits-scroll">{children}</ScrollView>
+  </MaskedView>;
 }
 
 function Stale() {
@@ -83,6 +110,9 @@ function Stale() {
 }
 
 const styles = StyleSheet.create({
+  mask: { flex: 1 },
+  maskOpaque: { flex: 1, backgroundColor: 'black' },
+  maskFill: { position: 'absolute', inset: 0, backgroundColor: 'black' },
   empty: { gap: brandTokens.space.xs },
   loading: { gap: brandTokens.space.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, minHeight: brandTokens.layout.minTouch, paddingVertical: 0 },
