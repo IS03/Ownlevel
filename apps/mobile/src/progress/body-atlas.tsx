@@ -9,6 +9,7 @@ import { bodyObservationHref } from './body-chart-navigation';
 import { arrowDelta, formatValue } from './progress-format';
 import { bodyInterval, defaultBodyPair, equivalentPerWeek, measuresComparable } from './body-context-model';
 import { BodyIntervalContext, WeeklyWeightReference } from './body-context';
+import { shortRange } from './progress-range';
 
 export const BODY_CHOICES = [
   { key: 'body.weight', label: 'Peso' },
@@ -32,23 +33,6 @@ export function bodyDatePair(metric: ProgressBodyMetric, a: string, b: string) {
 }
 const difference = (value: number, unit: string) => Math.abs(value) < 1e-9 ? `= ${formatValue(0, unit)}`
   : Math.abs(value) < 0.005 ? `${value < 0 ? '↘' : '↗'} menos de 0,01 ${unit}` : arrowDelta(value, unit);
-
-export function BodyMetricPicker({ selected }: { selected: string }) {
-  const [open, setOpen] = useState(false);
-  const router = useRouter();
-  const { colors } = useOwnlevelTheme();
-  const label = BODY_CHOICES.find(m => m.key === selected)?.label ?? 'Medida';
-  return <>
-    <LinkRow label="Medida" value={label} onPress={() => setOpen(true)} />
-    {open ? <AppSheet onClose={() => setOpen(false)} closeLabel="Cerrar selector de medida" style={{ backgroundColor: colors.background, maxHeight: '85%' }}>
-      <ScrollView contentContainerStyle={styles.sheet} showsVerticalScrollIndicator={false}>
-        <Heading level={2}>Qué querés mirar</Heading>
-        {BODY_CHOICES.map(m => <SheetChoice key={m.key} label={m.label} selected={m.key === selected} onChoose={() => router.setParams({ metric: m.key })} />)}
-        <SheetChoice label="Cerrar" />
-      </ScrollView>
-    </AppSheet> : null}
-  </>;
-}
 
 export function BodyZones({ data, onRegister, disabled }: { data: ProgressBody; onRegister?: () => void; disabled?: boolean }) {
   const { colors } = useOwnlevelTheme();
@@ -94,7 +78,7 @@ export function BodyZones({ data, onRegister, disabled }: { data: ProgressBody; 
     {opened ? <AppSheet testID="body-zone-sheet" onClose={() => setZoneKey(null)} closeLabel="Cerrar zona" style={{ backgroundColor: colors.background, maxHeight: '85%' }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheet}>
         <Heading level={2}>{opened.label}</Heading>
-        {opened.keys.map(key => <SheetChoice key={key} label={line(key)} onChoose={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: key } })} />)}
+        {opened.keys.map(key => <SheetChoice key={key} label={line(key)} onChoose={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: key, fromBodyMeasures: '1' } })} />)}
         <SheetChoice label="Cerrar" />
       </ScrollView>
     </AppSheet> : null}
@@ -110,15 +94,16 @@ function SheetChoice({ label, selected, onChoose }: { label: string; selected?: 
   </Pressable>;
 }
 
-function DateChoice({ dates, label, value, onChange }: { dates: string[]; label: string; value: string; onChange: (date: string) => void }) {
+function DateChoice({ dates, label, value, today, onChange }: { dates: string[]; label: string; value: string; today?: string; onChange: (date: string) => void }) {
   const [open, setOpen] = useState(false);
   const { colors } = useOwnlevelTheme();
+  const dateLabel = (date: string) => today ? shortRange({ start: date, end: date }, today) : formatBodyDate(date);
   return <View>
-    <LinkRow label={label} value={value ? formatBodyDate(value) : 'Sin registros'} numeric onPress={() => setOpen(true)} disabled={!dates.length} />
+    <LinkRow label={label} value={value ? dateLabel(value) : 'Sin registros'} numeric onPress={() => setOpen(true)} disabled={!dates.length} />
     {open ? <AppSheet onClose={() => setOpen(false)} closeLabel={`Cerrar ${label.toLowerCase()}`} style={{ backgroundColor: colors.background, maxHeight: '85%' }}>
       <FlatList data={[...dates].reverse()} keyExtractor={date => date} contentContainerStyle={styles.sheet} showsVerticalScrollIndicator={false}
         ListHeaderComponent={<Heading level={2}>{label}</Heading>}
-        renderItem={({ item: date }) => <SheetChoice label={formatBodyDate(date)} selected={date === value} onChoose={() => onChange(date)} />}
+        renderItem={({ item: date }) => <SheetChoice label={dateLabel(date)} selected={date === value} onChoose={() => onChange(date)} />}
         ListFooterComponent={<SheetChoice label="Cerrar" />} />
     </AppSheet> : null}
   </View>;
@@ -127,6 +112,7 @@ function DateChoice({ dates, label, value, onChange }: { dates: string[]; label:
 /** Comparison reads the same confirmed period, with no request or fabricated cross-date snapshot. */
 export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBodyMetric[]; today?: string }) {
   const dates = bodyDates(metrics);
+  const weight = metrics.length === 1 && metrics[0].key === 'body.weight';
   const [open, setOpen] = useState(false);
   const [pair, setPair] = useState<{ a: string; b: string } | null>(null);
   const [missingOpen, setMissingOpen] = useState(false);
@@ -140,20 +126,22 @@ export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBody
   const comparable = rows.filter(row => row.change !== null);
   const missing = rows.filter(row => row.change === null);
   return <View style={styles.section} testID="body-record-comparison">
-    <Heading level={2}>{metrics.length === 1 ? 'Comparar dos fechas' : 'Qué cambió en tu cuerpo'}</Heading>
-    <AppText muted variant="footnote">Dos registros, lado a lado. Solo dentro del período elegido.</AppText>
-    {dates.length > 1 ? <LinkRow kind="disclosure" expanded={expanded} label="Comparar dos registros" onPress={() => setOpen(v => !v)} /> : null}
+    {dates.length > 1 ? <LinkRow kind="disclosure" expanded={expanded} label={weight ? "Comparar dos pesajes" : "Comparar dos registros"} onPress={() => setOpen(v => !v)} /> : null}
     {dates.length < 2 ? <AppText muted variant="footnote">Necesitás registros en dos fechas distintas para comparar.</AppText> : null}
     {expanded ? <>
       <View>
-        <DateChoice dates={dates.filter(d => d < b)} label="Desde" value={a} onChange={date => setPair({ a: date, b })} />
-        <DateChoice dates={dates.filter(d => d > a)} label="Hasta" value={b} onChange={date => setPair({ a, b: date })} />
+        <DateChoice dates={dates.filter(d => d < b)} label="Desde" value={a} today={today} onChange={date => setPair({ a: date, b })} />
+        <DateChoice dates={dates.filter(d => d > a)} label="Hasta" value={b} today={today} onChange={date => setPair({ a, b: date })} />
       </View>
-      <AppText muted numeric variant="caption">{comparable.length} {comparable.length === 1 ? 'medida con dato' : 'medidas con dato'} en ambas fechas.</AppText>
-      {interval ? <AppText muted numeric variant="footnote">{interval.elapsed} {interval.elapsed === 1 ? 'día' : 'días'} entre registros{interval.short ? '. Es poco tiempo: muestra la diferencia entre dos días, no una tendencia' : ''}.</AppText> : null}
+      {!weight ? <AppText muted numeric variant="caption">{comparable.length} {comparable.length === 1 ? 'medida con dato' : 'medidas con dato'} en ambas fechas.</AppText> : null}
+      {interval && !weight ? <AppText muted numeric variant="footnote">{interval.elapsed} {interval.elapsed === 1 ? 'día' : 'días'} entre registros{interval.short ? '. Es poco tiempo: muestra la diferencia entre dos días, no una tendencia' : ''}.</AppText> : null}
       {comparable.some(row => row.metric.key !== 'body.weight') ? <AppText muted variant="caption">Una medida puede variar algunos milímetros según cómo te medís, y no separa músculo de grasa.</AppText> : null}
       {comparable.map(row => {
         const weekly = row.metric.key === 'body.weight' && interval && Math.abs(row.change!) >= 1e-9 ? equivalentPerWeek(row.change!, interval.elapsed) : null;
+        if (weight && interval) return <View key={row.metric.key} style={styles.comparisonRow}>
+          <AppText numeric variant="headline">{formatValue(row.first!.value, row.metric.unit)} → {formatValue(row.last!.value, row.metric.unit)} · {difference(row.change!, row.metric.unit)}</AppText>
+          <AppText numeric muted variant="footnote">{weekly !== null ? `≈ ${difference(weekly, row.metric.unit)} por semana · ` : ''}{interval.elapsed} {interval.elapsed === 1 ? 'día' : 'días'}{interval.short ? ' · intervalo corto' : ''}</AppText>
+        </View>;
         return <View key={row.metric.key} style={styles.comparisonRow} accessible accessibilityLabel={`${row.metric.label}: ${formatValue(row.first!.value, row.metric.unit)} a ${formatValue(row.last!.value, row.metric.unit)}, ${difference(row.change!, row.metric.unit)}`}>
           <View style={styles.comparisonHead}>
             <AppText variant="headline">{row.metric.label}</AppText>
@@ -168,10 +156,9 @@ export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBody
         <AppText variant="headline">{row.metric.label}</AppText>
         <AppText numeric muted variant="footnote">{row.first ? formatValue(row.first.value, row.metric.unit) : 'Sin registro'} → {row.last ? formatValue(row.last.value, row.metric.unit) : 'Sin registro'}</AppText>
       </View>) : null}
-      <AppText muted variant="caption">Cada valor es el de esa fecha: no completamos huecos con registros anteriores.</AppText>
       {today && interval ? <>
         {metrics.some(m => m.key === 'body.weight') ? <WeeklyWeightReference key={`${a}|${b}`} a={a} b={b} today={today} /> : null}
-        <BodyIntervalContext key={`context|${a}|${b}`} range={interval.context} />
+        <BodyIntervalContext key={`context|${a}|${b}`} range={interval.context} today={today} />
       </> : null}
     </> : null}
   </View>;

@@ -3,7 +3,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { Dimensions, StyleSheet } from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
 import type { ProgressBody, ProgressBodyMetric } from '@/api/progress';
-import { BODY_CHOICES, BodyJournal, BodyMetricPicker, BodyRecordComparison, BodyZones, bodyDatePair, bodyDates } from './body-atlas';
+import { BodyJournal, BodyRecordComparison, BodyZones, bodyDatePair, bodyDates } from './body-atlas';
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 const mockPush = jest.fn(), mockSetParams = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, setParams: mockSetParams }) }));
@@ -58,10 +58,11 @@ describe('Body atlas data truth', () => {
     expect(long.getByText('90 cm → 90 cm')).toBeTruthy();
     expect(long.getByText('28 días entre registros.')).toBeTruthy();
   });
-  it('offers all eleven dimensions, including dimensions never recorded', () => {
-    const view = wrap(<BodyMetricPicker selected="body.weight" />);
-    fireEvent.press(view.getByRole('button', { name: 'Medida, Peso' }));
-    for (const item of BODY_CHOICES) expect(view.getAllByRole('button', { name: item.label }).length).toBeGreaterThan(0);
+  it('shows only the two weights, the difference and equivalent pace when compared alone', () => {
+    const view = wrap(<BodyRecordComparison metrics={[metric('body.weight', 'Peso', [obs('2026-10-01', 70), obs('2026-10-29', 72)])]} />);
+    fireEvent.press(view.getByRole('button', { name: 'Comparar dos pesajes' }));
+    expect(view.getByText('70 kg → 72 kg · ↗ 2 kg')).toBeTruthy();
+    expect(view.getByText('≈ ↗ 0,5 kg por semana · 28 días')).toBeTruthy();
   });
   it('groups the cuaderno by exact date and keeps access to excluded originals', () => {
     const view = wrap(<BodyJournal data={data} />);

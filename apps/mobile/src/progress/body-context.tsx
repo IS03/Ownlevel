@@ -12,7 +12,7 @@ import { nutritionValue } from './nutrition-values';
 import { FittedChart } from './fitted-chart';
 import { formatBodyDate } from '@/body/body-model';
 import { arrowDelta, formatValue } from './progress-format';
-import { daysBetween, type DateRange } from './progress-range';
+import { daysBetween, shortRange, type DateRange } from './progress-range';
 import { useProgressResource } from './use-progress-resource';
 import { nutritionChartDayHref } from './nutrition-chart-navigation';
 import { metricOriginalHref } from './metrics-chart-navigation';
@@ -31,6 +31,14 @@ const CHOICES = [...NUTRIENTS.map(n => ({ key: n.key, label: n.label, detail: 'A
 const queryFor = (range: DateRange) => ({ period: 'custom' as const, from: range.start, to: range.end });
 const rangeKey = (range: DateRange) => `${range.start}|${range.end}`;
 const amount = (value: number | null, unit: 'kcal' | 'g') => value === null ? 'Sin dato' : nutritionValue(value, unit);
+type Coverage = { denominator: number; partialDays: number };
+const coverageText = (stat: Coverage, eligible: number) =>
+  `${stat.denominator} de ${eligible} días con dato${stat.partialDays ? ` · ${stat.partialDays} ${stat.partialDays === 1 ? 'parcial' : 'parciales'}` : ''}`;
+function nutritionCoverageText(stats: (Coverage & { label: string })[], eligible: number) {
+  const first = stats[0];
+  if (first && stats.every(s => s.denominator === first.denominator && s.partialDays === first.partialDays)) return coverageText(first, eligible);
+  return `Días con dato de ${eligible} cerrados · ${stats.map(s => `${s.label}: ${s.denominator}${s.partialDays ? ` (${s.partialDays} ${s.partialDays === 1 ? 'parcial' : 'parciales'})` : ''}`).join(' · ')}`;
+}
 const datesText = (range: DateRange) => `${formatBodyDate(range.start)} → ${formatBodyDate(range.end)}`;
 
 function ReadNotice({ loading, unavailable, retained, retry }: { loading: boolean; unavailable: boolean; retained: boolean; retry: () => void }) {
@@ -49,15 +57,14 @@ function ContextPicker({ range, selected, onPick, onClose, interval = false }: {
     {data && !data.definitions.length ? <AppText muted variant="footnote">No hay métricas personales disponibles.</AppText> : null}
   </OptionSheet>;
 }
-function ContextStages({ range }: { range: DateRange }) {
+function ContextStages({ range, today }: { range: DateRange; today?: string }) {
   const { client } = useMobileApi();
   const { state, data: list, refresh } = useProgressResource(client, 'body-context-stages', fetchNutritionStages);
   const items = list ? intervalStages(list, range) : [];
   return <View style={styles.section} testID="body-context-stages">
-    <AppText variant="headline">Etapas del intervalo</AppText>
     <ReadNotice loading={state.status === 'loading'} unavailable={state.status !== 'ready' && state.status !== 'loading'} retained={!!list} retry={() => void refresh()} />
     {!list ? null : !items.length ? <AppText muted variant="footnote">Sin etapas registradas en estas fechas.</AppText>
-      : items.map(s => <View key={s.id}><AppText>{s.name}</AppText><AppText muted numeric variant="caption">{datesText(s)}</AppText></View>)}
+      : items.map(s => <AppText key={s.id} numeric muted variant="footnote">{s.name} · {today ? shortRange(s, today) : datesText(s)}</AppText>)}
   </View>;
 }
 type ChartProps = { selectedDate: string | null; onSelect: (date: string) => void; bodyMetric: string };
@@ -73,18 +80,22 @@ function NutritionContext({ range, choice, chart }: { range: DateRange; choice: 
     <ReadNotice loading={state.status === 'loading'} unavailable={state.status !== 'ready' && state.status !== 'loading'} retained={!!data} retry={() => void refresh()} />
     {data ? <>
       {data.range.notice ? <AppText muted variant="footnote">{data.range.notice}</AppText> : null}
-      <AppText muted numeric variant="footnote">{data.coverage.registeredDays} de {data.range.days} días con comidas registradas.</AppText>
-      <View style={styles.grid}>{(chart ? [nutrient] : NUTRIENTS).map(n => { const stat = data.summary.metrics[n.field]; return <View key={n.key} style={[styles.figure, styles.cell]}>
-        <AppText muted variant="footnote">{chart ? 'Promedio del período' : n.label}</AppText><AppText numeric variant="title2">{amount(stat.value, n.unit)}</AppText>
-        {stat.denominator < data.coverage.finalizedDays || stat.partialDays ? <AppText muted numeric variant="caption">{stat.denominator} de {data.coverage.finalizedDays} días{stat.partialDays ? ` · ${stat.partialDays} ${stat.partialDays === 1 ? 'parcial' : 'parciales'}` : ''}</AppText> : null}
-      </View>; })}</View>
-      <AppText muted variant="caption">Promedio por día cerrado con dato. Suma lo que registraste, que puede no ser todo lo que comiste.</AppText>
-      {!chart && (data.summary.metrics.targetCalories.value !== null || data.summary.metrics.targetProtein.value !== null) ? <AppText muted numeric variant="caption">Tu objetivo promedio en esas fechas: {[
-        data.summary.metrics.targetCalories.value !== null ? `${amount(data.summary.metrics.targetCalories.value, 'kcal')}${data.summary.metrics.targetCalories.denominator < data.coverage.finalizedDays ? ` (${data.summary.metrics.targetCalories.denominator} días)` : ''}` : null,
-        data.summary.metrics.targetProtein.value !== null ? `${amount(data.summary.metrics.targetProtein.value, 'g')} de proteína${data.summary.metrics.targetProtein.denominator < data.coverage.finalizedDays ? ` (${data.summary.metrics.targetProtein.denominator} días)` : ''}` : null,
-      ].filter(Boolean).join(' y ')}.</AppText> : null}
+      <View style={styles.grid}>{(chart ? [nutrient] : NUTRIENTS).map(n => {
+        const stat = data.summary.metrics[n.field];
+        const target = n.field === 'calories' ? data.summary.metrics.targetCalories : n.field === 'protein' ? data.summary.metrics.targetProtein : null;
+        return <View key={n.key} style={[styles.figure, styles.cell]}>
+          {!chart ? <AppText muted variant="footnote">{n.label}</AppText> : null}
+          <AppText numeric variant="title2">{amount(stat.value, n.unit)}{chart && stat.value !== null ? ' promedio' : ''}</AppText>
+          {!chart && target && target.value !== null ? <AppText muted numeric variant="caption">Objetivo {amount(target.value, n.unit)}{target.denominator < data.coverage.finalizedDays ? ` · ${target.denominator} días` : ''}</AppText> : null}
+        </View>;
+      })}</View>
+      <AppText muted numeric variant="footnote">
+        {chart ? coverageText(data.summary.metrics[nutrient.field], data.coverage.finalizedDays)
+          : nutritionCoverageText(NUTRIENTS.map(n => ({ label: n.label, ...data.summary.metrics[n.field] })), data.coverage.finalizedDays)}
+      </AppText>
+      {data.coverage.registeredDays !== data.coverage.finalizedDays || data.coverage.registeredDays !== data.range.days ? <AppText muted numeric variant="caption">{data.coverage.registeredDays} de {data.range.days} días con comidas registradas.</AppText> : null}
       {chart ? <>
-        <FittedChart testID="body-context-chart" label={`${nutrient.label} registradas`} range={range} mode="bars" unit={nutrient.unit} selectedKey={chart.selectedDate} onSelect={chart.onSelect}
+        <FittedChart testID="body-context-chart" label={`${nutrient.label} registradas`} range={range} mode="bars" showScale={false} unit={nutrient.unit} selectedKey={chart.selectedDate} onSelect={chart.onSelect}
           points={data.days.slice().reverse().map(d => ({ key: d.date, start: d.date, end: d.date, value: d.nutrients[nutrient.field].value,
             soft: d.isToday, partial: d.nutrients[nutrient.field].status === 'partial', text: `${formatBodyDate(d.date)}, ${nutrient.label}, ${formatValue(d.nutrients[nutrient.field].value, nutrient.unit)}${d.isToday ? ', hoy en curso' : ''}${d.nutrients[nutrient.field].status === 'partial' ? ', suma parcial entre comidas registradas' : ''}` }))} />
         {chart.selectedDate ? <View accessibilityLiveRegion="polite"><AppText numeric variant="headline">{formatBodyDate(chart.selectedDate)}</AppText>
@@ -107,11 +118,9 @@ function TrainingContext({ range }: { range: DateRange }) {
     <ReadNotice loading={state.status === 'loading'} unavailable={state.status !== 'ready' && state.status !== 'loading'} retained={!!data} retry={() => void refresh()} />
     {data ? <>
       <AppText numeric variant="headline">{count(data.summary.sessions, 'sesión', 'sesiones')} · {count(data.summary.sets, 'serie', 'series')} · {formatValue(data.summary.minutes, null, 'duration')}</AppText>
-      <AppText muted variant="caption">La duración incluye los descansos.</AppText>
-      <AppText variant="headline">Series por grupo muscular</AppText>
+        <AppText variant="headline">Series por grupo muscular</AppText>
       {data.muscles.map(m => <View key={m.key} style={styles.muscle}><AppText>{m.label}</AppText><AppText numeric>{count(m.sets, 'serie', 'series')}</AppText></View>)}
       {!data.muscles.length ? <AppText muted variant="footnote">Sin series asignadas a grupos en estas fechas.</AppText> : null}
-      <AppText muted variant="caption">Cada ejercicio suma a un solo grupo. El contorno de pecho incluye la espalda; no hay medida de hombros.</AppText>
     </> : null}
   </View>;
 }
@@ -131,7 +140,7 @@ function ExploreContext({ range, choice, chart }: { range: DateRange; choice: st
       <AppText muted numeric variant="caption">{data.measure.aggregation === 'sum' ? 'Total registrado' : 'Promedio por día con dato'} · {current.coverage.days} de {current.coverage.eligible} días con dato.</AppText>
       {chart && current.series ? <>
         <FittedChart testID="body-context-chart" label={data.measure.label} points={current.series.map(b => ({ key: b.start, start: b.start, end: b.end, value: b.value, soft: b.start <= data.today && b.end >= data.today, text: `${datesText(b)}, ${value(b.value)}${b.start <= data.today && b.end >= data.today ? ', intervalo en curso' : ''}` }))}
-          range={range} unit={data.measure.unit ?? undefined} mode="bars" selectedKey={bucket?.start ?? null} onSelect={chart.onSelect} />
+          range={range} unit={data.measure.unit ?? undefined} mode="bars" showScale={false} selectedKey={bucket?.start ?? null} onSelect={chart.onSelect} />
         {chart.selectedDate ? <View accessibilityLiveRegion="polite"><AppText muted numeric>{bucket ? datesText(bucket) : formatBodyDate(chart.selectedDate)}</AppText>
           <AppText numeric>{bucket ? value(bucket.value) : 'Sin dato en esta fecha'}</AppText>
           {bucket && bucket.start <= data.today && bucket.end >= data.today ? <AppText muted variant="caption">Intervalo en curso.</AppText> : null}
@@ -143,17 +152,15 @@ function ExploreContext({ range, choice, chart }: { range: DateRange; choice: st
   </View>;
 }
 /** Context has an exact local range, never changes the shared A/B selection. */
-export function BodyIntervalContext({ range }: { range: DateRange | null }) {
+export function BodyIntervalContext({ range, today }: { range: DateRange | null; today?: string }) {
   const [choice, setChoice] = useState('nutrition.kcal'), [picker, setPicker] = useState(false);
   return <View style={styles.section} testID="body-interval-context">
     <Heading level={2}>Qué registraste entre esas fechas</Heading>
     {!range ? <AppText muted>No hay días intermedios para resumir contexto.</AppText> : <>
-      <AppText muted numeric variant="footnote">{datesText(range)} · {daysBetween(range.start, range.end)} días.</AppText>
-      <AppText muted variant="caption">Excluimos los días de ambas mediciones porque no conocemos su hora.</AppText>
+      <AppText muted numeric variant="footnote">{today ? shortRange(range, today) : datesText(range)} · {daysBetween(range.start, range.end)} días.</AppText>
       <LinkRow label="Mirar" value={choice.startsWith('training.') ? 'Entrenamiento' : choice.startsWith('nutrition.') ? 'Alimentación' : 'Tu métrica'} onPress={() => setPicker(true)} />
       {choice.startsWith('nutrition.') ? <NutritionContext range={range} choice={choice} /> : choice.startsWith('training.') ? <TrainingContext range={range} /> : <ExploreContext range={range} choice={choice} />}
-      <ContextStages range={range} />
-      <AppText muted variant="caption">Estos registros acompañan el cambio observado; no explican su causa.</AppText>
+      <ContextStages range={range} today={today} />
       {picker ? <ContextPicker interval range={range} selected={choice} onPick={setChoice} onClose={() => setPicker(false)} /> : null}
     </>}
   </View>;
@@ -163,13 +170,11 @@ export function BodyTimelineContext({ range, metric, selectedDate, onSelect }: {
   const chart = { selectedDate, onSelect: (date: string) => onSelect(date), bodyMetric: metric.key };
   const point = metric.observations.find(o => o.date === selectedDate);
   return <View style={styles.section} testID="body-timeline-context">
-    <LinkRow kind="disclosure" expanded={open} label="Ver junto a comida, métricas o entrenamiento" onPress={() => setOpen(v => !v)} />
+    <LinkRow kind="disclosure" expanded={open} label="Ver junto a…" onPress={() => setOpen(v => !v)} />
     {open ? <>
-      <Heading level={2}>En las mismas fechas</Heading>
       <LinkRow label="Mirar" value={CHOICES.find(c => c.key === choice)?.label ?? 'Tu métrica'} onPress={() => setPicker(true)} />
       {selectedDate ? <AppText muted numeric variant="footnote">{metric.label} · {formatBodyDate(selectedDate)}: {point ? formatValue(point.value, metric.unit) : 'sin registro corporal en esta fecha'}</AppText> : null}
       {choice.startsWith('nutrition.') ? <NutritionContext range={range} choice={choice} chart={chart} /> : <ExploreContext range={range} choice={choice} chart={chart} />}
-      <AppText muted variant="caption">Mismo período, escalas distintas. Mirarlos juntos no demuestra una relación causal.</AppText>
       {picker ? <ContextPicker range={range} selected={choice} onPick={setChoice} onClose={() => setPicker(false)} /> : null}
     </> : null}
   </View>;

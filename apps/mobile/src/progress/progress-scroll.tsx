@@ -22,9 +22,10 @@ const SMALL = 21;
  * uses). Scrolling, the title never moves sideways: it shrinks in place on the left, and the period you are reading
  * fades in under it ("Este mes", "Mes anterior", "17 sep – 16 oct").
  */
-export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, compactPeriod = true, comparisonControls = true, periodPickerTestID = 'progress-period-picker', openSheet = null, sheetProposal = null, onSheetOpened, initialScrollPosition, onScrollPosition }: {
+export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, compactPeriod = true, comparisonControls = true, periodPickerTestID = 'progress-period-picker', openSheet = null, sheetProposal = null, onSheetOpened, initialScrollPosition, onScrollPosition, onBack, bottomDock }: {
   title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode; multilineTitle?: boolean; compactTitle?: string;
   /** The tab's first screen: no back button and a large title. */
+  onBack?: () => void; bottomDock?: ReactNode;
   root?: boolean; comparisonControls?: boolean; periodControls?: boolean; compactPeriod?: boolean; periodPickerTestID?: string;
   /** #519 · A sheet asked for by the route (the portada's «Comparar períodos»): opened once, then the route forgets it. */
   openSheet?: 'compare' | null; onSheetOpened?: () => void;
@@ -75,7 +76,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const barTitle = compactTitle ?? title;
   return <>
     <Stack.Screen options={{ title: barTitle, headerShown: false }} />
-    <ScrollScreen testID={testID} scrollRef={scroll} scrollEdge edgeExtra={barHeight + 8} edgeFade={10} topInset="manual"
+    <ScrollScreen safeAreaEdges={bottomDock ? ['left', 'right'] : undefined} testID={testID} scrollRef={scroll} scrollEdge edgeExtra={barHeight + 8} edgeFade={10} topInset="manual"
       // The spinner shows below the fixed header, not behind it.
       refreshControl={refreshControl ? cloneElement(refreshControl, {
         progressViewOffset: header,
@@ -100,11 +101,12 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
       </View> : <ProgressPeriodBlock {...open} /> : null}
       {children}
       {/* The floating tab bar sits over the end of the page: the last row always scrolls clear of it. */}
-      <View style={styles.tabRoom} />
+      {bottomDock ? null : <View style={styles.tabRoom} />}
     </ScrollScreen>
+    {bottomDock ? <BottomDock>{bottomDock}</BottomDock> : null}
     <View pointerEvents="box-none" style={[styles.header, { paddingTop: top }]}>
       <View pointerEvents="box-none" style={[styles.bar, { height: barHeight }]}>
-        {root ? null : <Pressable accessibilityRole="button" accessibilityLabel="Volver" hitSlop={4} onPress={() => router.back()} testID="progress-back">
+        {root ? null : <Pressable accessibilityRole="button" accessibilityLabel="Volver" hitSlop={4} onPress={onBack ?? (() => router.back())} testID="progress-back">
           <GlassSurface interactive style={styles.backButton}><AppIcon name="chevronLeft" color={colors.text} size={20} /></GlassSurface>
         </Pressable>}
         <View pointerEvents="none" style={[styles.titleSlot, { height: barHeight }]}>
@@ -125,7 +127,14 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
     {comparisonControls && sheet === 'compare' ? <CompareSheet proposal={proposal} onClose={() => { setSheet(null); setProposal(null); }} /> : null}
   </>;
 }
+function BottomDock({ children }: { children: ReactNode }) {
+  const { bottom } = useSafeAreaInsets();
+  const { colors } = useOwnlevelTheme();
+  return <View style={[styles.bottomDock, { backgroundColor: colors.background, paddingBottom: Math.max(bottom, spacing.sm) }]}>{children}</View>;
+}
+
 const styles = StyleSheet.create({
+  bottomDock: { alignItems: 'flex-end', paddingHorizontal: spacing.lg, paddingTop: spacing.xs },
   // A long question under the bar keeps its own air instead of touching it.
   multilineTitle: { paddingTop: spacing.md },
   tabRoom: { height: 72 },
